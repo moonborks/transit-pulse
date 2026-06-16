@@ -2,173 +2,210 @@ package mta
 
 import (
 	"archive/zip"
-	"encoding/csv"
-	"fmt"
+	"context"
 	"io"
 	"log/slog"
 	"net/http"
 	"os"
+
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 var mtaGTFS = "https://rrgtfsfeeds.s3.amazonaws.com/gtfs_supplemented.zip"
 
-func RetrieveGTFS(gtfsURL string) {
+func RetrieveGTFS(ctx context.Context, pool *pgxpool.Pool, gtfsURL string) {
 	resp, err := http.Get(mtaGTFS)
 	if err != nil {
-		slog.Error("unable to GET from URL", "url", gtfsURL, "err", err)
+		slog.Error("GET from URL", "url", gtfsURL, "err", err)
 		return
 	}
 	defer resp.Body.Close()
 
 	tempFile, err := os.CreateTemp("", "temp.zip")
 	if err != nil {
-		slog.Error("error creating a temp file", "err", err)
+		slog.Error("creating a temp file", "err", err)
 		return
 	}
 	defer os.Remove(tempFile.Name())
 
 	_, err = io.Copy(tempFile, resp.Body)
 	if err != nil {
-		slog.Error("error copying response body into a temp file", "err", err)
+		slog.Error("copying response body into a temp file", "err", err)
 		return
 	}
 
-	err = unzipGTFS(tempFile.Name())
+	zr, err := zip.OpenReader(tempFile.Name())
 	if err != nil {
-		slog.Error("failed to unzip file", "err", err)
+		slog.Error("unzip file", "err", err)
 		return
-	}
-}
-
-func unzipGTFS(filename string) error {
-	zr, err := zip.OpenReader(filename)
-	if err != nil {
-		return fmt.Errorf("failed to create zip reader: %w", err)
 	}
 	defer zr.Close()
 
+	tx, err := pool.Begin(ctx)
+	if err != nil {
+		slog.Error("retrieve transaction connection to db", "err", err)
+		return
+	}
+	defer tx.Rollback(ctx)
+
+	err = createStagingTables(ctx, tx)
+	if err != nil {
+		slog.Error("create temp staging tables", "err", err)
+		return
+	}
+
+	queries := map[string]string{
+		"routes.txt": "COPY routes_staging FROM STDIN CSV HEADER",
+		"shapes.txt": "COPY shapes_staging FROM STDIN CSV HEADER",
+		"stops.txt":  "COPY stops_staging FROM STDIN CSV HEADER",
+		"trips.txt":  "COPY trips_staging FROM STDIN CSV HEADER",
+	}
+
 	for _, file := range zr.File {
-		switch file.Name {
-		case "routes.txt":
-			rc, err := file.Open()
-			if err != nil {
-				slog.Error("unable to read routes.txt", "err", err)
-			}
-			parseRoutes(rc)
-			rc.Close()
-		case "shapes.txt":
-			rc, err := file.Open()
-			if err != nil {
-				slog.Error("unable to read shapes.txt", "err", err)
-			}
-			parseShapes(rc)
-			rc.Close()
-		case "stops.txt":
-			rc, err := file.Open()
-			if err != nil {
-				slog.Error("unable to read stops.txt", "err", err)
-			}
-			parseStops(rc)
-			rc.Close()
-		case "trips.txt":
-			rc, err := file.Open()
-			if err != nil {
-				slog.Error("unable to read trips.txt", "err", err)
-			}
-			parseTrips(rc)
-			rc.Close()
-		default:
-			slog.Info("file is unused", "filename", file.Name)
+		query, ok := queries[file.Name]
+		if !ok {
+			continue
+		}
+
+		rc, err := file.Open()
+		if err != nil {
+			slog.Error("open file", "filename", file.Name, "err", err)
+			return
+		}
+
+		_, err = tx.Conn().PgConn().CopyFrom(ctx, rc, query)
+		rc.Close()
+		if err != nil {
+			slog.Error("copy data from csv", "filename", file.Name, "err", err)
+			return
 		}
 	}
 
-	return nil
-}
-
-func parseRoutes(rc io.ReadCloser) {
-	reader := csv.NewReader(rc)
-	_, err := reader.Read()
+	err = moveFromStaging(ctx, tx)
 	if err != nil {
-		slog.Error("unable to read from routes.txt", "err", err)
+		slog.Error("move from staging to db", "err", err)
 		return
 	}
 
-	for {
-		row, err := reader.Read()
-		if err == io.EOF {
-			break
-		}
-
-		if err != nil {
-			slog.Error("failed to read a line from routes.txt", "err", err)
-		}
-
-		fmt.Println(row)
+	err = tx.Commit(ctx)
+	if err != nil {
+		slog.Error("transaction commit", "err", err)
 	}
 }
 
-func parseShapes(rc io.ReadCloser) {
-	reader := csv.NewReader(rc)
-	_, err := reader.Read()
-	if err != nil {
-		slog.Error("unable to read from shapes.txt", "err", err)
-		return
-	}
+func createStagingTables(ctx context.Context, tx pgx.Tx) error {
+	_, err := tx.Exec(
+		ctx,
+		`
+			CREATE TEMP TABLE routes_staging (
+				agency_id TEXT
+				, route_id TEXT
+				, route_short_name TEXT
+				, route_long_name TEXT
+				, route_type SMALLINT
+				, route_desc TEXT
+				, route_url TEXT
+				, route_color TEXT
+				, route_text_color TEXT
+				, route_sort_order TEXT
+			) ON COMMIT DROP;
 
-	for {
-		row, err := reader.Read()
-		if err == io.EOF {
-			break
-		}
+			CREATE TEMP TABLE shapes_staging (
+				shape_id TEXT
+				, shape_pt_sequence INT
+				, shape_pt_lat DOUBLE PRECISION
+				, shape_pt_lon DOUBLE PRECISION
+			) ON COMMIT DROP;
 
-		if err != nil {
-			slog.Error("failed to read a line from shapes.txt", "err", err)
-		}
+			CREATE TEMP TABLE stops_staging (
+				stop_id TEXT
+				, stop_name TEXT
+				, stop_lat DOUBLE PRECISION
+				, stop_lon DOUBLE PRECISION
+				, location_type SMALLINT NULL
+				, parent_station TEXT
+			) ON COMMIT DROP;
 
-		fmt.Println(row)
-	}
+			CREATE TEMP TABLE trips_staging (
+				route_id TEXT
+				, trip_id TEXT
+				, service_id TEXT
+				, trip_headsign TEXT
+				, direction_id SMALLINT
+				, shape_id TEXT
+			) ON COMMIT DROP;
+		`,
+	)
+	return err
 }
 
-func parseStops(rc io.ReadCloser) {
-	reader := csv.NewReader(rc)
-	_, err := reader.Read()
-	if err != nil {
-		slog.Error("unable to read from stops.txt", "err", err)
-		return
-	}
+func moveFromStaging(ctx context.Context, tx pgx.Tx) error {
+	_, err := tx.Exec(
+		ctx,
+		`
+			INSERT INTO routes (
+				id
+				, short_name
+				, long_name
+				, type
+				, color
+			)
+			SELECT
+				route_id
+				, route_short_name
+				, route_long_name
+				, route_type
+				, route_color
+			FROM routes_staging;
 
-	for {
-		row, err := reader.Read()
-		if err == io.EOF {
-			break
-		}
+			INSERT INTO shapes (
+				id
+				, sequence
+				, lat
+				, lon
+			)
+			SELECT
+				shape_id
+				, shape_pt_sequence
+				, shape_pt_lat
+				, shape_pt_lon
+			FROM shapes_staging;
 
-		if err != nil {
-			slog.Error("failed to read a line from stops.txt", "err", err)
-		}
+			INSERT INTO stops (
+				id
+				, name
+				, lat
+				, lon
+				, location_type
+				, parent_station
+			)
+			SELECT
+				stop_id
+				, stop_name
+				, stop_lat
+				, stop_lon
+				, location_type
+				, parent_station
+			FROM stops_staging;
 
-		fmt.Println(row)
-	}
-}
-
-func parseTrips(rc io.ReadCloser) {
-	reader := csv.NewReader(rc)
-	_, err := reader.Read()
-	if err != nil {
-		slog.Error("unable to read from trips.txt", "err", err)
-		return
-	}
-
-	for {
-		row, err := reader.Read()
-		if err == io.EOF {
-			break
-		}
-
-		if err != nil {
-			slog.Error("failed to read a line from trips.txt", "err", err)
-		}
-
-		fmt.Println(row)
-	}
+			INSERT INTO trips (
+				id
+				, route_id
+				, service_id
+				, headsign
+				, direction_id
+				, shape_id
+			)
+			SELECT
+				trip_id
+				, route_id
+				, service_id
+				, trip_headsign
+				, direction_id
+				, shape_id
+			FROM trips_staging;
+		`,
+	)
+	return err
 }
