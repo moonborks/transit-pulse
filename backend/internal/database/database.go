@@ -8,7 +8,10 @@ import (
 )
 
 func Migrate(ctx context.Context, conn *pgxpool.Pool) error {
-	_, err := conn.Exec(ctx, `CREATE TABLE IF NOT EXISTS schema_version (version INTEGER PRIMARY KEY)`)
+	_, err := conn.Exec(
+		ctx,
+		`CREATE TABLE IF NOT EXISTS schema_version (version INTEGER PRIMARY KEY)`,
+	)
 	if err != nil {
 		return err
 	}
@@ -22,7 +25,7 @@ func Migrate(ctx context.Context, conn *pgxpool.Pool) error {
 				id          TEXT PRIMARY KEY,
 				short_name  TEXT,
 				long_name   TEXT,
-				type        INT,
+				type        SMALLINT,
 				color       TEXT
 			);
 
@@ -31,8 +34,8 @@ func Migrate(ctx context.Context, conn *pgxpool.Pool) error {
 				name            TEXT,
 				lat             DOUBLE PRECISION,
 				lon             DOUBLE PRECISION,
-				location_type   INT,
-				parent_station  TEXT
+				location_type   SMALLINT NULL,
+				parent_station  TEXT NULL
 			);
 
 			CREATE TABLE IF NOT EXISTS shapes (
@@ -48,15 +51,16 @@ func Migrate(ctx context.Context, conn *pgxpool.Pool) error {
 				route_id        TEXT REFERENCES routes(id),
 				service_id      TEXT,
 				headsign        TEXT,
-				direction_id    INT,
-				shape_id        TEXT
+				direction_id    SMALLINT,
+				shape_id        TEXT NULL
 			);
 		`},
 	}
 
 	for _, m := range migrations {
 		var count int
-		conn.QueryRow(ctx, "SELECT COUNT(*) FROM schema_version WHERE version = $1", m.version).Scan(&count)
+		conn.QueryRow(ctx, "SELECT COUNT(*) FROM schema_version WHERE version = $1", m.version).
+			Scan(&count)
 		if count > 0 {
 			continue
 		}

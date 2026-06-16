@@ -7,10 +7,14 @@ import (
 	"net/http"
 	"os"
 
-	"github.com/go-chi/chi/middleware"
-	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+
 	"github.com/moonborks/transit-pulse/internal/database"
+	"github.com/moonborks/transit-pulse/internal/server"
+	"github.com/moonborks/transit-pulse/internal/transit/mta/routes"
+	"github.com/moonborks/transit-pulse/internal/transit/mta/shapes"
+	"github.com/moonborks/transit-pulse/internal/transit/mta/stops"
+	"github.com/moonborks/transit-pulse/internal/transit/mta/trips"
 )
 
 type App struct {
@@ -48,11 +52,29 @@ func NewApp() *App {
 		panic(db_table_err)
 	}
 
-	router := chi.NewRouter()
-	router.Use(middleware.Logger)
-	router.Route("/api", func(api chi.Router) {
+	routeRepo := routes.NewRouteRepo(db)
+	shapeRepo := shapes.NewShapeRepo(db)
+	stopRepo := stops.NewStopRepo(db)
+	tripRepo := trips.NewTripRepo(db)
 
-	})
+	routeService := routes.NewRouteService(routeRepo)
+	shapeService := shapes.NewShapeService(shapeRepo)
+	stopService := stops.NewStopService(stopRepo)
+	tripService := trips.NewTripService(tripRepo)
+
+	routeHandler := routes.NewRouteHandler(routeService)
+	shapeHandler := shapes.NewShapeHandler(shapeService)
+	stopHandler := stops.NewStopHandler(stopService)
+	tripHandler := trips.NewTripHandler(tripService)
+
+	handlers := server.Handlers{
+		Route: routeHandler,
+		Shape: shapeHandler,
+		Stop:  stopHandler,
+		Trip:  tripHandler,
+	}
+
+	router := server.MainRouter(&handlers)
 
 	return &App{
 		DB:     db,
