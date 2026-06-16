@@ -1,0 +1,36 @@
+services:
+  valkey:
+    container_name: valkey
+    image: valkey/valkey:latest
+    ports:
+      - 6379:6379
+
+  redisinsight:
+    container_name: insight
+    image: redis/redisinsight:latest
+    environment:
+      RI_APP_PORT: 5540
+      RI_APP_HOST: 0.0.0.0
+      RI_LOG_LEVEL: info
+      RI_FILES_LOGGER: /data/logs
+      RI_REDIS_HOST: valkey
+    ports:
+      - 8001:5540
+    depends_on:
+      - valkey
+
+  postgres:
+    container_name: postgres
+    image: postgres:latest
+    shm_size: 128mb
+    environment:
+      POSTGRES_USER: dev
+      POSTGRES_PASSWORD: dev
+
+  adminer:
+    container_name: adminer
+    image: adminer:latest
+    ports:
+      - 8080:8080
+    depends_on:
+      - postgres
