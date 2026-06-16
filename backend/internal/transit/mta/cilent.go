@@ -82,6 +82,12 @@ func RetrieveGTFS(ctx context.Context, pool *pgxpool.Pool, gtfsURL string) {
 		}
 	}
 
+	err = moveFromStaging(ctx, tx)
+	if err != nil {
+		slog.Error("move from staging to db", "err", err)
+		return
+	}
+
 	err = tx.Commit(ctx)
 	if err != nil {
 		slog.Error("transaction commit", "err", err)
@@ -129,6 +135,76 @@ func createStagingTables(ctx context.Context, tx pgx.Tx) error {
 				, direction_id SMALLINT
 				, shape_id TEXT
 			) ON COMMIT DROP;
+		`,
+	)
+	return err
+}
+
+func moveFromStaging(ctx context.Context, tx pgx.Tx) error {
+	_, err := tx.Exec(
+		ctx,
+		`
+			INSERT INTO routes (
+				id
+				, short_name
+				, long_name
+				, type
+				, color
+			)
+			SELECT
+				route_id
+				, route_short_name
+				, route_long_name
+				, route_type
+				, route_color
+			FROM routes_staging;
+
+			INSERT INTO shapes (
+				id
+				, sequence
+				, lat
+				, lon
+			)
+			SELECT
+				shape_id
+				, shape_pt_sequence
+				, shape_pt_lat
+				, shape_pt_lon
+			FROM shapes_staging;
+
+			INSERT INTO stops (
+				id
+				, name
+				, lat
+				, lon
+				, location_type
+				, parent_station
+			)
+			SELECT
+				stop_id
+				, stop_name
+				, stop_lat
+				, stop_lon
+				, location_type
+				, parent_station
+			FROM stops_staging;
+
+			INSERT INTO trips (
+				id
+				, route_id
+				, service_id
+				, headsign
+				, direction_id
+				, shape_id
+			)
+			SELECT
+				trip_id
+				, route_id
+				, service_id
+				, trip_headsign
+				, direction_id
+				, shape_id
+			FROM trips_staging;
 		`,
 	)
 	return err
