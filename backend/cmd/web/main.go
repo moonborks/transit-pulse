@@ -1,13 +1,16 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
 
 	"github.com/joho/godotenv"
+
 	"github.com/moonborks/transit-pulse/internal/app"
+	"github.com/moonborks/transit-pulse/internal/transit/mta"
 )
 
 func main() {
@@ -18,7 +21,8 @@ func main() {
 		}
 	}
 	app := app.NewApp()
-	var port = "8888"
+	mta.RetrieveGTFS(context.Background(), app.DB, "")
+	port := "8888"
 	fmt.Println("Server running on :" + port)
 	server_err := http.ListenAndServe(":"+port, app.Router)
 	if server_err != nil {
