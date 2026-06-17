@@ -25,7 +25,7 @@ func ShapeRoutes(h *ShapeHandler) http.Handler {
 }
 
 func (h *ShapeHandler) GetAll(w http.ResponseWriter, r *http.Request) {
-	routes, err := h.shapeService.GetAll(r.Context())
+	shapes, err := h.shapeService.GetAll(r.Context())
 	if err != nil {
 		web.WriteError(
 			w,
@@ -36,7 +36,7 @@ func (h *ShapeHandler) GetAll(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := web.WriteJson(w, http.StatusOK, routes); err != nil {
+	if err := web.WriteJson(w, http.StatusOK, shapes); err != nil {
 		slog.Error("writing response json")
 	}
 }
@@ -44,7 +44,7 @@ func (h *ShapeHandler) GetAll(w http.ResponseWriter, r *http.Request) {
 func (h *ShapeHandler) GetShape(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 
-	route, err := h.shapeService.GetShape(r.Context(), id)
+	shape, err := h.shapeService.GetShape(r.Context(), id)
 	if err != nil {
 		web.WriteError(
 			w,
@@ -55,7 +55,7 @@ func (h *ShapeHandler) GetShape(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := web.WriteJson(w, http.StatusOK, route); err != nil {
+	if err := web.WriteJson(w, http.StatusOK, shape); err != nil {
 		slog.Error("writing response json")
 	}
 }
