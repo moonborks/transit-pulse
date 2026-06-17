@@ -50,7 +50,7 @@ func (h *RouteHandler) GetRoute(w http.ResponseWriter, r *http.Request) {
 			w,
 			http.StatusInternalServerError,
 			"INTERNAL_ERROR",
-			"unable tro retrieve the specified route",
+			"unable to retrieve the specified route",
 		)
 		return
 	}
