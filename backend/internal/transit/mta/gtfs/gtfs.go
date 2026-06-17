@@ -1,4 +1,4 @@
-package mta
+package gtfs
 
 import (
 	"archive/zip"
@@ -14,7 +14,7 @@ import (
 
 var mtaGTFS = "https://rrgtfsfeeds.s3.amazonaws.com/gtfs_supplemented.zip"
 
-func RetrieveGTFS(ctx context.Context, pool *pgxpool.Pool, gtfsURL string) {
+func RetrieveStaticGTFS(ctx context.Context, pool *pgxpool.Pool, gtfsURL string) {
 	resp, err := http.Get(mtaGTFS)
 	if err != nil {
 		slog.Error("GET from URL", "url", gtfsURL, "err", err)
@@ -144,10 +144,7 @@ func moveFromStaging(ctx context.Context, tx pgx.Tx) error {
 	_, err := tx.Exec(
 		ctx,
 		`
-			TRUNCATE routes;
-			TRUNCATE shapes;
-			TRUNCATE stops;
-			TRUNCATE trips;
+			TRUNCATE routes shapes stops trips;
 
 			INSERT INTO routes (
 				id
