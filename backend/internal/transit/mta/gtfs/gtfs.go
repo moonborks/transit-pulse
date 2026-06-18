@@ -12,10 +12,8 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-var mtaGTFS = "https://rrgtfsfeeds.s3.amazonaws.com/gtfs_supplemented.zip"
-
 func RetrieveStaticGTFS(ctx context.Context, pool *pgxpool.Pool, gtfsURL string) {
-	resp, err := http.Get(mtaGTFS)
+	resp, err := http.Get(gtfsURL)
 	if err != nil {
 		slog.Error("GET from URL", "url", gtfsURL, "err", err)
 		return
