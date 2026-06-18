@@ -144,7 +144,7 @@ func moveFromStaging(ctx context.Context, tx pgx.Tx) error {
 	_, err := tx.Exec(
 		ctx,
 		`
-			TRUNCATE routes shapes stops trips;
+			TRUNCATE routes, shapes, stops, trips;
 
 			INSERT INTO routes (
 				id
