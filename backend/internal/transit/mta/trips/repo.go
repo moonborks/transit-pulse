@@ -28,6 +28,7 @@ func (r *TripRepo) GetAll(ctx context.Context) ([]Trip, error) {
 		slog.Error("query trips table", "err", err)
 		return nil, err
 	}
+	defer rows.Close()
 
 	trips := []Trip{}
 
@@ -37,7 +38,7 @@ func (r *TripRepo) GetAll(ctx context.Context) ([]Trip, error) {
 			&trip.ID,
 			&trip.RouteID,
 			&trip.ServiceID,
-			&trip.HeadSign,
+			&trip.Headsign,
 			&trip.DirectionID,
 			&trip.ShapeID,
 		); err != nil {
@@ -66,7 +67,7 @@ func (r *TripRepo) GetTrip(ctx context.Context, id string) (Trip, error) {
 		&trip.ID,
 		&trip.RouteID,
 		&trip.ServiceID,
-		&trip.HeadSign,
+		&trip.Headsign,
 		&trip.DirectionID,
 		&trip.ShapeID,
 	)
