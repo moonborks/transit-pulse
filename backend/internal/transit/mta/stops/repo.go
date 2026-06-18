@@ -15,7 +15,7 @@ func NewStopRepo(db *pgxpool.Pool) *StopRepo {
 	return &StopRepo{db: db}
 }
 
-func (r *StopRepo) GetAll(ctx context.Context) ([]*Stop, error) {
+func (r *StopRepo) GetAll(ctx context.Context) ([]Stop, error) {
 	stmt := `
 		SELECT
 			id, name, lat, lon
@@ -30,7 +30,7 @@ func (r *StopRepo) GetAll(ctx context.Context) ([]*Stop, error) {
 	}
 	defer rows.Close()
 
-	stops := []*Stop{}
+	stops := []Stop{}
 
 	for rows.Next() {
 		var stop Stop
@@ -42,13 +42,13 @@ func (r *StopRepo) GetAll(ctx context.Context) ([]*Stop, error) {
 		); err != nil {
 			slog.Error("retrieving particular row", "err", err)
 		}
-		stops = append(stops, &stop)
+		stops = append(stops, stop)
 	}
 
 	return stops, nil
 }
 
-func (r *StopRepo) GetStop(ctx context.Context, id string) (*Stop, error) {
+func (r *StopRepo) GetStop(ctx context.Context, id string) (Stop, error) {
 	stmt := `
 		SELECT
 			id, name, lat, lon
@@ -64,8 +64,8 @@ func (r *StopRepo) GetStop(ctx context.Context, id string) (*Stop, error) {
 	err := row.Scan(&stop.ID, &stop.Name, &stop.Lat, &stop.Lon)
 	if err != nil {
 		slog.Error("retrieving row with specific id", "id", id, "err", err)
-		return nil, err
+		return Stop{}, err
 	}
 
-	return &stop, nil
+	return stop, nil
 }

@@ -15,7 +15,7 @@ func NewShapeRepo(db *pgxpool.Pool) *ShapeRepo {
 	return &ShapeRepo{db: db}
 }
 
-func (r *ShapeRepo) GetAll(ctx context.Context) ([]*Shape, error) {
+func (r *ShapeRepo) GetAll(ctx context.Context) ([]Shape, error) {
 	stmt := `
 		SELECT
 			id, sequence, lat, lon
@@ -30,7 +30,7 @@ func (r *ShapeRepo) GetAll(ctx context.Context) ([]*Shape, error) {
 	}
 	defer rows.Close()
 
-	shapes := []*Shape{}
+	shapes := []Shape{}
 
 	for rows.Next() {
 		var shape Shape
@@ -42,13 +42,13 @@ func (r *ShapeRepo) GetAll(ctx context.Context) ([]*Shape, error) {
 		); err != nil {
 			slog.Error("retrieving particular row from shapes table", "err", err)
 		}
-		shapes = append(shapes, &shape)
+		shapes = append(shapes, shape)
 	}
 
 	return shapes, nil
 }
 
-func (r *ShapeRepo) GetShape(ctx context.Context, id string) ([]*Shape, error) {
+func (r *ShapeRepo) GetShape(ctx context.Context, id string) ([]Shape, error) {
 	stmt := `
 		SELECT
 			id, sequence, lat, lon
@@ -65,7 +65,7 @@ func (r *ShapeRepo) GetShape(ctx context.Context, id string) ([]*Shape, error) {
 	}
 	defer rows.Close()
 
-	shapes := []*Shape{}
+	shapes := []Shape{}
 
 	for rows.Next() {
 		var shape Shape
@@ -77,7 +77,7 @@ func (r *ShapeRepo) GetShape(ctx context.Context, id string) ([]*Shape, error) {
 		); err != nil {
 			slog.Error("retrieving particular row from shapes table", "err", err)
 		}
-		shapes = append(shapes, &shape)
+		shapes = append(shapes, shape)
 	}
 
 	return shapes, nil

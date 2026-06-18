@@ -15,7 +15,7 @@ func NewRouteRepo(db *pgxpool.Pool) *RouteRepo {
 	return &RouteRepo{db: db}
 }
 
-func (r *RouteRepo) GetAll(ctx context.Context) ([]*Route, error) {
+func (r *RouteRepo) GetAll(ctx context.Context) ([]Route, error) {
 	stmt := `
 		SELECT
 			id, short_name, long_name, type, color
@@ -30,7 +30,7 @@ func (r *RouteRepo) GetAll(ctx context.Context) ([]*Route, error) {
 	}
 	defer rows.Close()
 
-	routes := []*Route{}
+	routes := []Route{}
 
 	for rows.Next() {
 		var route Route
@@ -43,13 +43,13 @@ func (r *RouteRepo) GetAll(ctx context.Context) ([]*Route, error) {
 		); err != nil {
 			slog.Error("retrieving particular row", "err", err)
 		}
-		routes = append(routes, &route)
+		routes = append(routes, route)
 	}
 
 	return routes, nil
 }
 
-func (r *RouteRepo) GetRoute(ctx context.Context, id string) (*Route, error) {
+func (r *RouteRepo) GetRoute(ctx context.Context, id string) (Route, error) {
 	stmt := `
 		SELECT
 			id, short_name, long_name, type, color
@@ -65,8 +65,8 @@ func (r *RouteRepo) GetRoute(ctx context.Context, id string) (*Route, error) {
 	err := row.Scan(&route.ID, &route.ShortName, &route.LongName, &route.Type, &route.Color)
 	if err != nil {
 		slog.Error("retrieving row with specific id", "id", id, "err", err)
-		return nil, err
+		return Route{}, err
 	}
 
-	return &route, nil
+	return route, nil
 }

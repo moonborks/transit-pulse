@@ -15,7 +15,7 @@ func NewTripRepo(db *pgxpool.Pool) *TripRepo {
 	return &TripRepo{db: db}
 }
 
-func (r *TripRepo) GetAll(ctx context.Context) ([]*Trip, error) {
+func (r *TripRepo) GetAll(ctx context.Context) ([]Trip, error) {
 	stmt := `
 		SELECT
 			id, route_id, service_id, headsign, direction_id, shape_id
@@ -29,7 +29,7 @@ func (r *TripRepo) GetAll(ctx context.Context) ([]*Trip, error) {
 		return nil, err
 	}
 
-	trips := []*Trip{}
+	trips := []Trip{}
 
 	for rows.Next() {
 		var trip Trip
@@ -43,13 +43,13 @@ func (r *TripRepo) GetAll(ctx context.Context) ([]*Trip, error) {
 		); err != nil {
 			slog.Error("retrieving particular row", "err", err)
 		}
-		trips = append(trips, &trip)
+		trips = append(trips, trip)
 	}
 
 	return trips, nil
 }
 
-func (r *TripRepo) GetTrip(ctx context.Context, id string) (*Trip, error) {
+func (r *TripRepo) GetTrip(ctx context.Context, id string) (Trip, error) {
 	stmt := `
 		SELECT
 			id, route_id, service_id, headsign, direction_id, shape_id
@@ -72,8 +72,8 @@ func (r *TripRepo) GetTrip(ctx context.Context, id string) (*Trip, error) {
 	)
 	if err != nil {
 		slog.Error("retrieving row with specific id", "id", id, "err", err)
-		return nil, err
+		return Trip{}, err
 	}
 
-	return &trip, nil
+	return trip, nil
 }
