@@ -15,7 +15,8 @@ const BOUNDS = L.latLngBounds(
   [42.5, -71.0], // NE
 );
 
-onMounted(() => {
+onMounted(async () => {
+  await mtaStore.load();
   if (!mapEl.value) return;
   map = L.map(mapEl.value, {
     center: [40.706, -74.013],
@@ -34,9 +35,10 @@ onMounted(() => {
 
   const shapes = mtaStore.groupedShapes;
   for (const [shapeId, points] of Object.entries(shapes)) {
+    console.log(shapeId);
     L.polyline(points, { color: mtaStore.getShapeColor(shapeId), weight: 3 }).addTo(map);
   }
-  for (const stop of mtaStore.stops) {
+  for (const stop of mtaStore.stops ?? []) {
     L.circle([stop.lat, stop.lon], {
       radius: 1,
       color: "#333333",

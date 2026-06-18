@@ -10,7 +10,7 @@ import (
 	"github.com/joho/godotenv"
 
 	"github.com/moonborks/transit-pulse/internal/app"
-	"github.com/moonborks/transit-pulse/internal/transit/mta"
+	"github.com/moonborks/transit-pulse/internal/transit/mta/gtfs"
 )
 
 func main() {
@@ -21,7 +21,7 @@ func main() {
 		}
 	}
 	app := app.NewApp()
-	mta.RetrieveGTFS(context.Background(), app.DB, "")
+	gtfs.RetrieveStaticGTFS(context.Background(), app.DB, "")
 	port := "8888"
 	fmt.Println("Server running on :" + port)
 	server_err := http.ListenAndServe(":"+port, app.Router)

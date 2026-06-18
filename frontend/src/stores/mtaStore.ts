@@ -1,564 +1,83 @@
 import { defineStore } from "pinia";
 import { type Stop, type ShapePoint, type Route, type Trip } from "../types/mta";
-
-const stops: Stop[] = [
-  { id: "101", name: "Van Cortlandt Park-242 St", lat: 40.889248, lon: -73.898583 },
-  { id: "103", name: "238 St", lat: 40.884667, lon: -73.90087 },
-  { id: "104", name: "231 St", lat: 40.878856, lon: -73.904834 },
-  { id: "106", name: "Marble Hill-225 St", lat: 40.874561, lon: -73.909831 },
-  { id: "107", name: "215 St", lat: 40.869444, lon: -73.915279 },
-  { id: "108", name: "207 St", lat: 40.864621, lon: -73.918822 },
-  { id: "109", name: "Dyckman St", lat: 40.860531, lon: -73.925536 },
-  { id: "110", name: "191 St", lat: 40.855225, lon: -73.929412 },
-  { id: "111", name: "181 St", lat: 40.849505, lon: -73.933596 },
-  { id: "112", name: "168 St-Washington Hts", lat: 40.840556, lon: -73.940133 },
-  { id: "113", name: "157 St", lat: 40.834041, lon: -73.94489 },
-  { id: "114", name: "145 St", lat: 40.826551, lon: -73.95036 },
-  { id: "115", name: "137 St-City College", lat: 40.822008, lon: -73.953676 },
-  { id: "116", name: "125 St", lat: 40.815581, lon: -73.958372 },
-  { id: "117", name: "116 St-Columbia University", lat: 40.807722, lon: -73.96411 },
-  { id: "118", name: "Cathedral Pkwy (110 St)", lat: 40.803967, lon: -73.966847 },
-  { id: "119", name: "103 St", lat: 40.799446, lon: -73.968379 },
-  { id: "120", name: "96 St", lat: 40.793919, lon: -73.972323 },
-  { id: "121", name: "86 St", lat: 40.788644, lon: -73.976218 },
-  { id: "122", name: "79 St", lat: 40.783934, lon: -73.979917 },
-  { id: "123", name: "72 St", lat: 40.778453, lon: -73.98197 },
-  { id: "124", name: "66 St-Lincoln Center", lat: 40.77344, lon: -73.982209 },
-  { id: "125", name: "59 St-Columbus Circle", lat: 40.768247, lon: -73.981929 },
-  { id: "126", name: "50 St", lat: 40.761728, lon: -73.983849 },
-  { id: "127", name: "Times Sq-42 St", lat: 40.75529, lon: -73.987495 },
-  { id: "128", name: "34 St-Penn Station", lat: 40.750373, lon: -73.991057 },
-  { id: "129", name: "28 St", lat: 40.747215, lon: -73.993365 },
-  { id: "130", name: "23 St", lat: 40.744081, lon: -73.995657 },
-  { id: "131", name: "18 St", lat: 40.74104, lon: -73.997871 },
-  { id: "132", name: "14 St", lat: 40.737826, lon: -74.000201 },
-  { id: "133", name: "Christopher St-Stonewall", lat: 40.733422, lon: -74.002906 },
-  { id: "134", name: "Houston St", lat: 40.728251, lon: -74.005367 },
-  { id: "135", name: "Canal St", lat: 40.722854, lon: -74.006277 },
-  { id: "136", name: "Franklin St", lat: 40.719318, lon: -74.006886 },
-  { id: "137", name: "Chambers St", lat: 40.715478, lon: -74.009266 },
-  { id: "138", name: "WTC Cortlandt", lat: 40.711835, lon: -74.012188 },
-  { id: "139", name: "Rector St", lat: 40.707513, lon: -74.013783 },
-  { id: "142", name: "South Ferry", lat: 40.702068, lon: -74.013664 },
-  { id: "201", name: "Wakefield-241 St", lat: 40.903125, lon: -73.85062 },
-  { id: "204", name: "Nereid Av", lat: 40.898379, lon: -73.854376 },
-  { id: "205", name: "233 St", lat: 40.893193, lon: -73.857473 },
-  { id: "206", name: "225 St", lat: 40.888022, lon: -73.860341 },
-  { id: "207", name: "219 St", lat: 40.883895, lon: -73.862633 },
-  { id: "208", name: "Gun Hill Rd", lat: 40.87785, lon: -73.866256 },
-  { id: "209", name: "Burke Av", lat: 40.871356, lon: -73.867164 },
-  { id: "210", name: "Allerton Av", lat: 40.865462, lon: -73.867352 },
-  { id: "211", name: "Pelham Pkwy", lat: 40.857192, lon: -73.867615 },
-  { id: "212", name: "Bronx Park East", lat: 40.848828, lon: -73.868457 },
-  { id: "213", name: "E 180 St", lat: 40.841894, lon: -73.873488 },
-  { id: "214", name: "West Farms Sq-E Tremont Av", lat: 40.840295, lon: -73.880049 },
-];
-
-const shapePoints: ShapePoint[] = [
-  { shapeId: "1..N03R", sequence: 0, lat: 40.702068, lon: -74.013664 },
-  { shapeId: "1..N03R", sequence: 1, lat: 40.703199, lon: -74.014792 },
-  { shapeId: "1..N03R", sequence: 2, lat: 40.703226, lon: -74.01482 },
-  { shapeId: "1..N03R", sequence: 3, lat: 40.703253, lon: -74.014846 },
-  { shapeId: "1..N03R", sequence: 4, lat: 40.70328, lon: -74.01487 },
-  { shapeId: "1..N03R", sequence: 5, lat: 40.703307, lon: -74.014893 },
-  { shapeId: "1..N03R", sequence: 6, lat: 40.703335, lon: -74.014914 },
-  { shapeId: "1..N03R", sequence: 7, lat: 40.703363, lon: -74.014933 },
-  { shapeId: "1..N03R", sequence: 8, lat: 40.703391, lon: -74.014952 },
-  { shapeId: "1..N03R", sequence: 9, lat: 40.703419, lon: -74.014968 },
-  { shapeId: "1..N03R", sequence: 10, lat: 40.703448, lon: -74.014983 },
-  { shapeId: "1..N03R", sequence: 11, lat: 40.703477, lon: -74.014997 },
-  { shapeId: "1..N03R", sequence: 12, lat: 40.703506, lon: -74.015009 },
-  { shapeId: "1..N03R", sequence: 13, lat: 40.703536, lon: -74.015019 },
-  { shapeId: "1..N03R", sequence: 14, lat: 40.703566, lon: -74.015028 },
-  { shapeId: "1..N03R", sequence: 15, lat: 40.703596, lon: -74.015035 },
-  { shapeId: "1..N03R", sequence: 16, lat: 40.703625, lon: -74.015041 },
-  { shapeId: "1..N03R", sequence: 17, lat: 40.704168, lon: -74.015122 },
-  { shapeId: "1..N03R", sequence: 18, lat: 40.704194, lon: -74.015125 },
-  { shapeId: "1..N03R", sequence: 19, lat: 40.704221, lon: -74.015126 },
-  { shapeId: "1..N03R", sequence: 20, lat: 40.704247, lon: -74.015127 },
-  { shapeId: "1..N03R", sequence: 21, lat: 40.704274, lon: -74.015127 },
-  { shapeId: "1..N03R", sequence: 22, lat: 40.7043, lon: -74.015125 },
-  { shapeId: "1..N03R", sequence: 23, lat: 40.704327, lon: -74.015123 },
-  { shapeId: "1..N03R", sequence: 24, lat: 40.704354, lon: -74.015119 },
-  { shapeId: "1..N03R", sequence: 25, lat: 40.70438, lon: -74.015115 },
-  { shapeId: "1..N03R", sequence: 26, lat: 40.704407, lon: -74.015109 },
-  { shapeId: "1..N03R", sequence: 27, lat: 40.704434, lon: -74.015102 },
-  { shapeId: "1..N03R", sequence: 28, lat: 40.704461, lon: -74.015094 },
-  { shapeId: "1..N03R", sequence: 29, lat: 40.704487, lon: -74.015086 },
-  { shapeId: "1..N03R", sequence: 30, lat: 40.704514, lon: -74.015076 },
-  { shapeId: "1..N03R", sequence: 31, lat: 40.704541, lon: -74.015065 },
-  { shapeId: "1..N03R", sequence: 32, lat: 40.704568, lon: -74.015052 },
-  { shapeId: "1..N03R", sequence: 33, lat: 40.705092, lon: -74.01483 },
-  { shapeId: "1..N03R", sequence: 34, lat: 40.707513, lon: -74.013783 },
-  { shapeId: "1..N03R", sequence: 35, lat: 40.708242, lon: -74.013471 },
-  { shapeId: "1..N03R", sequence: 36, lat: 40.710132, lon: -74.012648 },
-  { shapeId: "1..N03R", sequence: 37, lat: 40.7105, lon: -74.012529 },
-  { shapeId: "1..N03R", sequence: 38, lat: 40.711112, lon: -74.012375 },
-  { shapeId: "1..N03R", sequence: 39, lat: 40.711565, lon: -74.012259 },
-  { shapeId: "1..N03R", sequence: 40, lat: 40.711835, lon: -74.012188 },
-  { shapeId: "1..N03R", sequence: 41, lat: 40.712105, lon: -74.012108 },
-  { shapeId: "1..N03R", sequence: 42, lat: 40.712154, lon: -74.012094 },
-  { shapeId: "1..N03R", sequence: 43, lat: 40.712203, lon: -74.012076 },
-  { shapeId: "1..N03R", sequence: 44, lat: 40.712252, lon: -74.012057 },
-  { shapeId: "1..N03R", sequence: 45, lat: 40.7123, lon: -74.012035 },
-  { shapeId: "1..N03R", sequence: 46, lat: 40.712348, lon: -74.012012 },
-  { shapeId: "1..N03R", sequence: 47, lat: 40.712394, lon: -74.011986 },
-  { shapeId: "1..N03R", sequence: 48, lat: 40.71244, lon: -74.011959 },
-  { shapeId: "1..N03R", sequence: 49, lat: 40.712486, lon: -74.011929 },
-  { shapeId: "1..N03R", sequence: 50, lat: 40.71253, lon: -74.011897 },
-];
-
-export const trips: Trip[] = [
-  {
-    id: "ASP26GEN-1038-Sunday-00_000600_1..S03R",
-    routeId: "1",
-    serviceId: "ASP26GEN-1038-Sunday-00_C40",
-    headsign: "South Ferry",
-    directionId: 1,
-    shapeId: "1..S03R",
-  },
-  {
-    id: "ASP26GEN-1038-Sunday-00_002600_1..S03R",
-    routeId: "1",
-    serviceId: "ASP26GEN-1038-Sunday-00_C40",
-    headsign: "South Ferry",
-    directionId: 1,
-    shapeId: "1..S03R",
-  },
-  {
-    id: "ASP26GEN-1038-Sunday-00_004600_1..S03R",
-    routeId: "1",
-    serviceId: "ASP26GEN-1038-Sunday-00_C40",
-    headsign: "South Ferry",
-    directionId: 1,
-    shapeId: "1..S03R",
-  },
-  {
-    id: "ASP26GEN-1038-Sunday-00_006600_1..S03R",
-    routeId: "1",
-    serviceId: "ASP26GEN-1038-Sunday-00_C40",
-    headsign: "South Ferry",
-    directionId: 1,
-    shapeId: "1..S03R",
-  },
-  {
-    id: "ASP26GEN-1038-Sunday-00_007200_1..N03R",
-    routeId: "1",
-    serviceId: "ASP26GEN-1038-Sunday-00_C40",
-    headsign: "Van Cortlandt Park-242 St",
-    directionId: 0,
-    shapeId: "1..N03R",
-  },
-  {
-    id: "ASP26GEN-1038-Sunday-00_008600_1..S03R",
-    routeId: "1",
-    serviceId: "ASP26GEN-1038-Sunday-00_C40",
-    headsign: "South Ferry",
-    directionId: 1,
-    shapeId: "1..S03R",
-  },
-  {
-    id: "ASP26GEN-1038-Sunday-00_009200_1..N03R",
-    routeId: "1",
-    serviceId: "ASP26GEN-1038-Sunday-00_C40",
-    headsign: "Van Cortlandt Park-242 St",
-    directionId: 0,
-    shapeId: "1..N03R",
-  },
-  {
-    id: "ASP26GEN-1038-Sunday-00_010600_1..S03R",
-    routeId: "1",
-    serviceId: "ASP26GEN-1038-Sunday-00_C40",
-    headsign: "South Ferry",
-    directionId: 1,
-    shapeId: "1..S03R",
-  },
-  {
-    id: "ASP26GEN-1038-Sunday-00_011200_1..N03R",
-    routeId: "1",
-    serviceId: "ASP26GEN-1038-Sunday-00_C40",
-    headsign: "Van Cortlandt Park-242 St",
-    directionId: 0,
-    shapeId: "1..N03R",
-  },
-  {
-    id: "ASP26GEN-1038-Sunday-00_012600_1..S03R",
-    routeId: "1",
-    serviceId: "ASP26GEN-1038-Sunday-00_C40",
-    headsign: "South Ferry",
-    directionId: 1,
-    shapeId: "1..S03R",
-  },
-  {
-    id: "ASP26GEN-1038-Sunday-00_013200_1..N03R",
-    routeId: "1",
-    serviceId: "ASP26GEN-1038-Sunday-00_C40",
-    headsign: "Van Cortlandt Park-242 St",
-    directionId: 0,
-    shapeId: "1..N03R",
-  },
-  {
-    id: "ASP26GEN-1038-Sunday-00_014600_1..S03R",
-    routeId: "1",
-    serviceId: "ASP26GEN-1038-Sunday-00_C40",
-    headsign: "South Ferry",
-    directionId: 1,
-    shapeId: "1..S03R",
-  },
-  {
-    id: "ASP26GEN-1038-Sunday-00_015200_1..N03R",
-    routeId: "1",
-    serviceId: "ASP26GEN-1038-Sunday-00_C40",
-    headsign: "Van Cortlandt Park-242 St",
-    directionId: 0,
-    shapeId: "1..N03R",
-  },
-  {
-    id: "ASP26GEN-1038-Sunday-00_016600_1..S03R",
-    routeId: "1",
-    serviceId: "ASP26GEN-1038-Sunday-00_C40",
-    headsign: "South Ferry",
-    directionId: 1,
-    shapeId: "1..S03R",
-  },
-  {
-    id: "ASP26GEN-1038-Sunday-00_017200_1..N03R",
-    routeId: "1",
-    serviceId: "ASP26GEN-1038-Sunday-00_C40",
-    headsign: "Van Cortlandt Park-242 St",
-    directionId: 0,
-    shapeId: "1..N03R",
-  },
-  {
-    id: "ASP26GEN-1038-Sunday-00_018600_1..S03R",
-    routeId: "1",
-    serviceId: "ASP26GEN-1038-Sunday-00_C40",
-    headsign: "South Ferry",
-    directionId: 1,
-    shapeId: "1..S03R",
-  },
-  {
-    id: "ASP26GEN-1038-Sunday-00_019200_1..N03R",
-    routeId: "1",
-    serviceId: "ASP26GEN-1038-Sunday-00_C40",
-    headsign: "Van Cortlandt Park-242 St",
-    directionId: 0,
-    shapeId: "1..N03R",
-  },
-  {
-    id: "ASP26GEN-1038-Sunday-00_020600_1..S03R",
-    routeId: "1",
-    serviceId: "ASP26GEN-1038-Sunday-00_C40",
-    headsign: "South Ferry",
-    directionId: 1,
-    shapeId: "1..S03R",
-  },
-  {
-    id: "ASP26GEN-1038-Sunday-00_021200_1..N03R",
-    routeId: "1",
-    serviceId: "ASP26GEN-1038-Sunday-00_C40",
-    headsign: "Van Cortlandt Park-242 St",
-    directionId: 0,
-    shapeId: "1..N03R",
-  },
-  {
-    id: "ASP26GEN-1038-Sunday-00_022600_1..S03R",
-    routeId: "1",
-    serviceId: "ASP26GEN-1038-Sunday-00_C40",
-    headsign: "South Ferry",
-    directionId: 1,
-    shapeId: "1..S03R",
-  },
-  {
-    id: "ASP26GEN-1038-Sunday-00_023200_1..N03R",
-    routeId: "1",
-    serviceId: "ASP26GEN-1038-Sunday-00_C40",
-    headsign: "Van Cortlandt Park-242 St",
-    directionId: 0,
-    shapeId: "1..N03R",
-  },
-  {
-    id: "ASP26GEN-1038-Sunday-00_024600_1..S03R",
-    routeId: "1",
-    serviceId: "ASP26GEN-1038-Sunday-00_C40",
-    headsign: "South Ferry",
-    directionId: 1,
-    shapeId: "1..S03R",
-  },
-  {
-    id: "ASP26GEN-1038-Sunday-00_025200_1..N03R",
-    routeId: "1",
-    serviceId: "ASP26GEN-1038-Sunday-00_C40",
-    headsign: "Van Cortlandt Park-242 St",
-    directionId: 0,
-    shapeId: "1..N03R",
-  },
-  {
-    id: "ASP26GEN-1038-Sunday-00_026600_1..S03R",
-    routeId: "1",
-    serviceId: "ASP26GEN-1038-Sunday-00_C40",
-    headsign: "South Ferry",
-    directionId: 1,
-    shapeId: "1..S03R",
-  },
-  {
-    id: "ASP26GEN-1038-Sunday-00_027200_1..N03R",
-    routeId: "1",
-    serviceId: "ASP26GEN-1038-Sunday-00_C40",
-    headsign: "Van Cortlandt Park-242 St",
-    directionId: 0,
-    shapeId: "1..N03R",
-  },
-  {
-    id: "ASP26GEN-1038-Sunday-00_028600_1..S03R",
-    routeId: "1",
-    serviceId: "ASP26GEN-1038-Sunday-00_C40",
-    headsign: "South Ferry",
-    directionId: 1,
-    shapeId: "1..S03R",
-  },
-  {
-    id: "ASP26GEN-1038-Sunday-00_029200_1..N03R",
-    routeId: "1",
-    serviceId: "ASP26GEN-1038-Sunday-00_C40",
-    headsign: "Van Cortlandt Park-242 St",
-    directionId: 0,
-    shapeId: "1..N03R",
-  },
-  {
-    id: "ASP26GEN-1038-Sunday-00_030600_1..S03R",
-    routeId: "1",
-    serviceId: "ASP26GEN-1038-Sunday-00_C40",
-    headsign: "South Ferry",
-    directionId: 1,
-    shapeId: "1..S03R",
-  },
-  {
-    id: "ASP26GEN-1038-Sunday-00_031200_1..N03R",
-    routeId: "1",
-    serviceId: "ASP26GEN-1038-Sunday-00_C40",
-    headsign: "Van Cortlandt Park-242 St",
-    directionId: 0,
-    shapeId: "1..N03R",
-  },
-  {
-    id: "ASP26GEN-1038-Sunday-00_032600_1..S03R",
-    routeId: "1",
-    serviceId: "ASP26GEN-1038-Sunday-00_C40",
-    headsign: "South Ferry",
-    directionId: 1,
-    shapeId: "1..S03R",
-  },
-  {
-    id: "ASP26GEN-1038-Sunday-00_033200_1..N03R",
-    routeId: "1",
-    serviceId: "ASP26GEN-1038-Sunday-00_C40",
-    headsign: "Van Cortlandt Park-242 St",
-    directionId: 0,
-    shapeId: "1..N03R",
-  },
-  {
-    id: "ASP26GEN-1038-Sunday-00_034600_1..S03R",
-    routeId: "1",
-    serviceId: "ASP26GEN-1038-Sunday-00_C40",
-    headsign: "South Ferry",
-    directionId: 1,
-    shapeId: "1..S03R",
-  },
-  {
-    id: "ASP26GEN-1038-Sunday-00_035200_1..N03R",
-    routeId: "1",
-    serviceId: "ASP26GEN-1038-Sunday-00_C40",
-    headsign: "Van Cortlandt Park-242 St",
-    directionId: 0,
-    shapeId: "1..N03R",
-  },
-  {
-    id: "ASP26GEN-1038-Sunday-00_036450_1..S03R",
-    routeId: "1",
-    serviceId: "ASP26GEN-1038-Sunday-00_C40",
-    headsign: "South Ferry",
-    directionId: 1,
-    shapeId: "1..S03R",
-  },
-  {
-    id: "ASP26GEN-1038-Sunday-00_037200_1..N03R",
-    routeId: "1",
-    serviceId: "ASP26GEN-1038-Sunday-00_C40",
-    headsign: "Van Cortlandt Park-242 St",
-    directionId: 0,
-    shapeId: "1..N03R",
-  },
-  {
-    id: "ASP26GEN-1038-Sunday-00_038350_1..S03R",
-    routeId: "1",
-    serviceId: "ASP26GEN-1038-Sunday-00_C40",
-    headsign: "South Ferry",
-    directionId: 1,
-    shapeId: "1..S03R",
-  },
-  {
-    id: "ASP26GEN-1038-Sunday-00_039200_1..N03R",
-    routeId: "1",
-    serviceId: "ASP26GEN-1038-Sunday-00_C40",
-    headsign: "Van Cortlandt Park-242 St",
-    directionId: 0,
-    shapeId: "1..N03R",
-  },
-  {
-    id: "ASP26GEN-1038-Sunday-00_040250_1..S03R",
-    routeId: "1",
-    serviceId: "ASP26GEN-1038-Sunday-00_C40",
-    headsign: "South Ferry",
-    directionId: 1,
-    shapeId: "1..S03R",
-  },
-  {
-    id: "ASP26GEN-1038-Sunday-00_041200_1..N03R",
-    routeId: "1",
-    serviceId: "ASP26GEN-1038-Sunday-00_C40",
-    headsign: "Van Cortlandt Park-242 St",
-    directionId: 0,
-    shapeId: "1..N03R",
-  },
-  {
-    id: "ASP26GEN-1038-Sunday-00_041850_1..S03R",
-    routeId: "1",
-    serviceId: "ASP26GEN-1038-Sunday-00_C40",
-    headsign: "South Ferry",
-    directionId: 1,
-    shapeId: "1..S03R",
-  },
-  {
-    id: "ASP26GEN-1038-Sunday-00_043200_1..N03R",
-    routeId: "1",
-    serviceId: "ASP26GEN-1038-Sunday-00_C40",
-    headsign: "Van Cortlandt Park-242 St",
-    directionId: 0,
-    shapeId: "1..N03R",
-  },
-  {
-    id: "ASP26GEN-1038-Sunday-00_043400_1..S03R",
-    routeId: "1",
-    serviceId: "ASP26GEN-1038-Sunday-00_C40",
-    headsign: "South Ferry",
-    directionId: 1,
-    shapeId: "1..S03R",
-  },
-  {
-    id: "ASP26GEN-1038-Sunday-00_044750_1..S03R",
-    routeId: "1",
-    serviceId: "ASP26GEN-1038-Sunday-00_C40",
-    headsign: "South Ferry",
-    directionId: 1,
-    shapeId: "1..S03R",
-  },
-];
-
-const groupShapePoints = (points: ShapePoint[]): Record<string, [number, number][]> => {
-  const grouped: Record<string, [number, number][]> = {};
-  for (const p of points) {
-    const pts = grouped[p.shapeId] ?? [];
-    pts.push([p.lat, p.lon]);
-    grouped[p.shapeId] = pts;
-  }
-  return grouped;
-};
-
-const routes: Route[] = [
-  { id: "1", shortName: "1", longName: "Broadway - 7 Avenue Local", type: 1, color: "D82233" },
-  { id: "2", shortName: "2", longName: "7 Avenue Express", type: 1, color: "D82233" },
-  { id: "3", shortName: "3", longName: "7 Avenue Express", type: 1, color: "D82233" },
-  { id: "4", shortName: "4", longName: "Lexington Avenue Express", type: 1, color: "009952" },
-  { id: "5", shortName: "5", longName: "Lexington Avenue Express", type: 1, color: "009952" },
-  { id: "6", shortName: "6", longName: "Lexington Avenue Local", type: 1, color: "009952" },
-  { id: "6X", shortName: "6X", longName: "Pelham Bay Park Express", type: 1, color: "009952" },
-  { id: "7", shortName: "7", longName: "Flushing Local", type: 1, color: "9A38A1" },
-  { id: "7X", shortName: "7X", longName: "Flushing Express", type: 1, color: "9A38A1" },
-  { id: "A", shortName: "A", longName: "8 Avenue Express", type: 1, color: "0062CF" },
-  { id: "B", shortName: "B", longName: "6 Avenue Express", type: 1, color: "EB6800" },
-  { id: "C", shortName: "C", longName: "8 Avenue Local", type: 1, color: "0062CF" },
-  { id: "D", shortName: "D", longName: "6 Avenue Express", type: 1, color: "EB6800" },
-  { id: "E", shortName: "E", longName: "8 Avenue Local", type: 1, color: "0062CF" },
-  {
-    id: "F",
-    shortName: "F",
-    longName: "Queens Blvd Express/6 Av Local",
-    type: 1,
-    color: "EB6800",
-  },
-  { id: "FS", shortName: "S", longName: "Franklin Avenue Shuttle", type: 1, color: "7C858C" },
-  { id: "FX", shortName: "FX", longName: "Brooklyn F Express", type: 1, color: "EB6800" },
-  { id: "G", shortName: "G", longName: "Brooklyn-Queens Crosstown", type: 1, color: "799534" },
-  { id: "GS", shortName: "S", longName: "42 St Shuttle", type: 1, color: "7C858C" },
-  { id: "H", shortName: "S", longName: "Rockaway Park Shuttle", type: 1, color: "7C858C" },
-  { id: "J", shortName: "J", longName: "Nassau St Local", type: 1, color: "8E5C33" },
-  { id: "L", shortName: "L", longName: "14 St-Canarsie Local", type: 1, color: "7C858C" },
-  { id: "M", shortName: "M", longName: "Queens Blvd Local/6 Av Local", type: 1, color: "EB6800" },
-  { id: "N", shortName: "N", longName: "Broadway Local", type: 1, color: "F6BC26" },
-  { id: "Q", shortName: "Q", longName: "Broadway Express", type: 1, color: "F6BC26" },
-  { id: "R", shortName: "R", longName: "Broadway Local", type: 1, color: "F6BC26" },
-  { id: "SI", shortName: "SIR", longName: "Staten Island Railway", type: 2, color: "08179C" },
-  { id: "W", shortName: "W", longName: "Broadway Local", type: 1, color: "F6BC26" },
-  { id: "Z", shortName: "Z", longName: "Nassau St Express", type: 1, color: "8E5C33" },
-];
-
-export const getShapeColor = (shapeId: string): string => {
-  const trip = trips.find((t) => t.shapeId === shapeId);
-  if (!trip) return "#888888";
-  const route = routes.find((r) => r.id === trip.routeId);
-  return route ? `#${route?.color}` : "#888888";
-};
+import { useFetch } from "@/composables/api/useFetch";
+import { computed } from "vue";
 
 export const useMtaStore = defineStore("mta", () => {
-  const groupedShapes = groupShapePoints(shapePoints);
+  const {
+    data: stops,
+    loading: stopsLoading,
+    error: stopsError,
+    fetchData: fetchStops,
+  } = useFetch<Stop[]>();
+  const {
+    data: shapes,
+    loading: shapesLoading,
+    error: shapesError,
+    fetchData: fetchShapes,
+  } = useFetch<ShapePoint[]>();
+  const {
+    data: trips,
+    loading: tripsLoading,
+    error: tripsError,
+    fetchData: fetchTrips,
+  } = useFetch<Trip[]>();
+  const {
+    data: routes,
+    loading: routesLoading,
+    error: routesError,
+    fetchData: fetchRoutes,
+  } = useFetch<Route[]>();
 
-  //   const {
-  //     data: stops,
-  //     loading: stopsLoading,
-  //     error: stopsError,
-  //     fetchData: fetchStops,
-  //   } = useFetch<Stop[]>();
-  //   const {
-  //     data: shapes,
-  //     loading: shapesLoading,
-  //     error: shapesError,
-  //     fetchData: fetchShapes,
-  //   } = useFetch<ShapePoint[]>();
-  //   const {
-  //     data: trips,
-  //     loading: tripsLoading,
-  //     error: tripsError,
-  //     fetchData: fetchTrips,
-  //   } = useFetch<Trip[]>();
-  //   const {
-  //     data: routes,
-  //     loading: routesLoading,
-  //     error: routesError,
-  //     fetchData: fetchRoutes,
-  //   } = useFetch<Route[]>();
+  const load = async () => {
+    await Promise.all([
+      fetchStops("/api/mta/stops"),
+      fetchShapes("/api/mta/shapes"),
+      fetchTrips("/api/mta/trips"),
+      fetchRoutes("/api/mta/routes"),
+    ]);
+    console.log("FINSIHED LOADING DATA");
+  };
 
-  //   const load = async () => {
-  //     await Promise.all([
-  //       fetchStops("/api/mta/stops"),
-  //       fetchShapes("/api/mta/shapes"),
-  //       fetchTrips("/api/mta/trips"),
-  //       fetchRoutes("/api/mta/routes"),
-  //     ]);
-  //   };
+  const groupedShapes = computed(() => {
+    return groupShapePoints(shapes.value);
+  });
+
+  function groupShapePoints(points: ShapePoint[] | null): Record<string, [number, number][]> {
+    const grouped: Record<string, [number, number][]> = {};
+    console.log(shapes);
+    if (points === null) {
+      return grouped;
+    }
+    for (const p of points) {
+      const pts = grouped[p.shapeId] ?? [];
+      pts.push([p.lat, p.lon]);
+      grouped[p.shapeId] = pts;
+    }
+    return grouped;
+  }
+
+  function getShapeColor(shapeId: string): string {
+    const trip = trips.value?.find((t) => t.shapeId === shapeId);
+    if (!trip) return "#888888";
+    const route = routes.value?.find((r) => r.id === trip.routeId);
+    return route ? `#${route?.color}` : "#888888";
+  }
 
   return {
     stops,
     groupedShapes,
     routes,
     trips,
+    stopsLoading,
+    stopsError,
+    shapesLoading,
+    shapesError,
+    routesLoading,
+    routesError,
+    tripsLoading,
+    tripsError,
+    load,
     getShapeColor,
-    // stops,
-    // polylines,
-    // stopsLoading,
-    // stopsError,
-    // shapesLoading,
-    // shapesError,
-    // load,
   };
 });
