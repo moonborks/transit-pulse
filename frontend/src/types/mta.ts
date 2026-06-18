@@ -22,7 +22,7 @@ export interface Stop {
 }
 
 export interface ShapePoint {
-  shapeId: string;
+  id: string;
   sequence: number;
   lat: number;
   lon: number;

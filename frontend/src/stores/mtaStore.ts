@@ -44,7 +44,6 @@ export const useMtaStore = defineStore("mta", () => {
       fetchTrips("/api/mta/trips"),
       fetchRoutes("/api/mta/routes"),
     ]);
-    console.log("FINSIHED LOADING DATA");
   };
 
   const groupedShapes = computed(() => {
@@ -53,14 +52,13 @@ export const useMtaStore = defineStore("mta", () => {
 
   function groupShapePoints(points: ShapePoint[] | null): Record<string, [number, number][]> {
     const grouped: Record<string, [number, number][]> = {};
-    console.log(shapes);
     if (points === null) {
       return grouped;
     }
     for (const p of points) {
-      const pts = grouped[p.shapeId] ?? [];
+      const pts = grouped[p.id] ?? [];
       pts.push([p.lat, p.lon]);
-      grouped[p.shapeId] = pts;
+      grouped[p.id] = pts;
     }
     return grouped;
   }

@@ -35,7 +35,6 @@ onMounted(async () => {
 
   const shapes = mtaStore.groupedShapes;
   for (const [shapeId, points] of Object.entries(shapes)) {
-    console.log(shapeId);
     L.polyline(points, { color: mtaStore.getShapeColor(shapeId), weight: 3 }).addTo(map);
   }
   for (const stop of mtaStore.stops ?? []) {
