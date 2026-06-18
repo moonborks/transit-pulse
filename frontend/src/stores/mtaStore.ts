@@ -1,7 +1,15 @@
 import { defineStore } from "pinia";
-import { type Stop, type ShapePoint, type Route, type Trip } from "../types/mta";
+import {
+  type Stop,
+  type ShapePoint,
+  type Route,
+  type Trip,
+  type RouteAPI,
+  type TripAPI,
+} from "@/types/mta";
 import { useFetch } from "@/composables/api/useFetch";
 import { computed } from "vue";
+import { normalizeRouteFields, normalizeTripFields } from "@/utils/normalizer";
 
 export const useMtaStore = defineStore("mta", () => {
   const {
@@ -21,13 +29,13 @@ export const useMtaStore = defineStore("mta", () => {
     loading: tripsLoading,
     error: tripsError,
     fetchData: fetchTrips,
-  } = useFetch<Trip[]>();
+  } = useFetch<TripAPI[], Trip[]>((data) => data.map(normalizeTripFields));
   const {
     data: routes,
     loading: routesLoading,
     error: routesError,
     fetchData: fetchRoutes,
-  } = useFetch<Route[]>();
+  } = useFetch<RouteAPI[], Route[]>((data) => data.map(normalizeRouteFields));
 
   const load = async () => {
     await Promise.all([
