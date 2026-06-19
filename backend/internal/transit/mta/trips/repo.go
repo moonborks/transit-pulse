@@ -18,7 +18,14 @@ func NewTripRepo(db *pgxpool.Pool) *TripRepo {
 func (r *TripRepo) GetAll(ctx context.Context) ([]Trip, error) {
 	stmt := `
 		SELECT
-			id, route_id, service_id, headsign, direction_id, shape_id
+			id
+			, day_of_week
+			, short_trip_id
+			, route_id
+			, service_id
+			, headsign
+			, direction_id
+			, shape_id
 		FROM
 			trips
 	`
@@ -36,6 +43,8 @@ func (r *TripRepo) GetAll(ctx context.Context) ([]Trip, error) {
 		var trip Trip
 		if err := rows.Scan(
 			&trip.ID,
+			&trip.DayOfWeek,
+			&trip.TripID,
 			&trip.RouteID,
 			&trip.ServiceID,
 			&trip.Headsign,

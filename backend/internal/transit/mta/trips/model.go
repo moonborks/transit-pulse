@@ -2,6 +2,8 @@ package trips
 
 type Trip struct {
 	ID          string  `json:"id"`
+	DayOfWeek   string  `json:"day_of_week"`
+	TripID      string  `json:"trip_id"`
 	RouteID     string  `json:"route_id"`
 	ServiceID   string  `json:"service_id"`
 	Headsign    string  `json:"headsign"`

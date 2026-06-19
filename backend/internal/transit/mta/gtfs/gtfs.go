@@ -200,6 +200,8 @@ func moveFromStaging(ctx context.Context, tx pgx.Tx) error {
 
 			INSERT INTO trips (
 				id
+				, day_of_week
+				, short_trip_id
 				, route_id
 				, service_id
 				, headsign
@@ -208,6 +210,14 @@ func moveFromStaging(ctx context.Context, tx pgx.Tx) error {
 			)
 			SELECT
 				trip_id
+				, COALESCE(
+					SUBSTRING(
+						LOWER(trip_id)
+						FROM '(weekday|saturday|sunday)'
+					),
+					'everyday'
+				)::freq_day
+				, SUBSTRING(trip_id FROM POSITION('_' IN trip_id) + 1)
 				, route_id
 				, service_id
 				, trip_headsign
@@ -216,14 +226,24 @@ func moveFromStaging(ctx context.Context, tx pgx.Tx) error {
 			FROM trips_staging;
 
 			INSERT INTO times (
-				trip_id
+				day_of_week
+				, short_trip_id
+				, trip_id
 				, stop_id
 				, arrival_time
 				, departure_time
 				, stop_sequence
 			)
 			SELECT
-				trip_id
+				COALESCE(
+					SUBSTRING(
+						LOWER(trip_id)
+						FROM '(weekday|saturday|sunday)'
+					),
+					'everyday'
+				)::freq_day
+				, SUBSTRING(trip_id FROM POSITION('_' IN trip_id) + 1)
+				, trip_id
 				, stop_id
 				, arrival_time
 				, departure_time

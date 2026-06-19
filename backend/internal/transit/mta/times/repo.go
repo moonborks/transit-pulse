@@ -20,7 +20,12 @@ func NewTimeRepo(db *pgxpool.Pool, rdb *redis.Client) *TimeRepo {
 func (r *TimeRepo) GetAll(ctx context.Context) ([]Time, error) {
 	stmt := `
 		SELECT
-			trip_id, stop_id, arrival_time, departure_time, stop_sequence
+			short_trip_id
+			, stop_id
+			, day_of_week
+			, arrival_time
+			, departure_time
+			, stop_sequence
 		FROM
 			times
 	`
@@ -37,6 +42,7 @@ func (r *TimeRepo) GetAll(ctx context.Context) ([]Time, error) {
 		if err := rows.Scan(
 			&time.TripID,
 			&time.StopID,
+			&time.DayOfWeek,
 			&time.ArrivalTime,
 			&time.DepartureTime,
 			&time.StopSequence,

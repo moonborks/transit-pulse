@@ -46,8 +46,17 @@ func Migrate(ctx context.Context, conn *pgxpool.Pool) error {
 				PRIMARY KEY (id, sequence)
 			);
 
+			CREATE TYPE freq_day AS ENUM (
+				'everyday'
+				, 'weekday'
+				, 'saturday'
+				, 'sunday'
+			);
+
 			CREATE TABLE IF NOT EXISTS trips (
 				id              TEXT PRIMARY KEY,
+				day_of_week     freq_day NOT NULL DEFAULT 'everyday',
+				short_trip_id   TEXT,
 				route_id        TEXT REFERENCES routes(id),
 				service_id      TEXT,
 				headsign        TEXT,
@@ -56,6 +65,8 @@ func Migrate(ctx context.Context, conn *pgxpool.Pool) error {
 			);
 
 			CREATE TABLE IF NOT EXISTS times (
+				day_of_week    freq_day NOT NULL DEFAULT 'everyday',
+				short_trip_id  TEXT,
 				trip_id        TEXT REFERENCES trips(id),
 				stop_id        TEXT REFERENCES stops(id),
 				arrival_time   TEXT,
