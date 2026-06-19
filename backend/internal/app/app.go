@@ -8,8 +8,10 @@ import (
 	"os"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/redis/go-redis/v9"
 
 	"github.com/moonborks/transit-pulse/internal/database"
+	"github.com/moonborks/transit-pulse/internal/jobs"
 	"github.com/moonborks/transit-pulse/internal/server"
 	"github.com/moonborks/transit-pulse/internal/transit/mta/routes"
 	"github.com/moonborks/transit-pulse/internal/transit/mta/shapes"
@@ -17,8 +19,23 @@ import (
 	"github.com/moonborks/transit-pulse/internal/transit/mta/trips"
 )
 
+var (
+	mtaGTFS = "https://rrgtfsfeeds.s3.amazonaws.com/gtfs_supplemented.zip"
+	gtfsRT  = []string{
+		"https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-ace",
+		"https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-bdfm",
+		"https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-g",
+		"https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-jz",
+		"https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-nqrw",
+		"https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-l",
+		"https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs",
+		"https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-si",
+	}
+)
+
 type App struct {
 	DB     *pgxpool.Pool
+	RDB    *redis.Client
 	Router http.Handler
 }
 
@@ -42,7 +59,8 @@ func NewApp() *App {
 		panic(err)
 	}
 	config := db.Config()
-	slog.Info("Connected to database",
+	slog.Info(
+		"Connected to database",
 		"host", config.ConnConfig.Host,
 		"port", config.ConnConfig.Port,
 		"database", config.ConnConfig.Database,
@@ -50,6 +68,17 @@ func NewApp() *App {
 	db_table_err := database.Migrate(ctx, db)
 	if db_table_err != nil {
 		panic(db_table_err)
+	}
+
+	rdb := redis.NewClient(&redis.Options{
+		Addr:     os.Getenv("VALKEY_URL"),
+		Password: "",
+		DB:       0,
+	})
+
+	go jobs.RunStaticGTFSJob(ctx, db, mtaGTFS)
+	for _, rtFeed := range gtfsRT {
+		go jobs.RunRealTimeGTFSJob(ctx, rdb, rtFeed)
 	}
 
 	routeRepo := routes.NewRouteRepo(db)
@@ -78,6 +107,7 @@ func NewApp() *App {
 
 	return &App{
 		DB:     db,
+		RDB:    rdb,
 		Router: router,
 	}
 }
