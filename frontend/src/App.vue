@@ -28,6 +28,10 @@ function isNorthbound(shapeId: string): boolean {
   return /\.\.N/.test(shapeId)
 }
 
+function isExpressOrZ(routeId: string): boolean {
+  return /X\d*$/.test(routeId) || /Z\d*$/.test(routeId)
+}
+
 function getEndpointKey(points: [number, number][]): string {
   const start = points[0]
   const end = points[points.length - 1]
@@ -39,38 +43,78 @@ function buildRouteOffsets(trips: Trip[]): Map<string, number> {
   const headsignGroups = new Map<string, Set<string>>()
 
   for (const trip of trips) {
-    if (!trip.headsign) continue
+    if (!trip.headsign || isExpressOrZ(trip.routeId)) continue
     if (!headsignGroups.has(trip.headsign)) {
       headsignGroups.set(trip.headsign, new Set())
     }
     headsignGroups.get(trip.headsign)!.add(trip.routeId)
   }
-
+  const sortedGroups = [...headsignGroups.entries()].sort((a, b) => {
+    if (b[1].size !== a[1].size) return b[1].size - a[1].size
+    return a[0].localeCompare(b[0])
+  })
   const offsetByRoute = new Map<string, number>()
+  const step = 4
+  const base = 2
 
-  for (const [, routeIds] of headsignGroups) {
-    const routes = [...routeIds]
-    if (routes.length < 2) continue
-    routes.forEach((routeId, index) => {
-      const magnitude = Math.floor(index / 2) * 1 + 4
-      const sign = index % 2 === 0 ? 1 : -1
-      offsetByRoute.set(routeId, sign * magnitude)
-    })
+  function offsetForSlot(slot: number, step: number, base: number): number {
+    const magnitude = Math.floor(slot / 2) * step + base
+    return slot % 2 === 0 ? magnitude : -magnitude
   }
+  function slotFromOffset(offset: number, step: number, base: number): number {
+    const group = (Math.abs(offset) - base) / step
+    return group * 2 + (offset < 0 ? 1 : 0)
+  }
+  for (const [, routes] of sortedGroups) {
+    const usedOffsets = new Set<number>()
+
+    let maxSlot = -1
+
+    for (const routeId of routes) {
+      const existing = offsetByRoute.get(routeId)
+      if (existing === undefined) continue
+
+      const slot = slotFromOffset(existing, step, base)
+
+      if (!Number.isNaN(slot)) {
+        maxSlot = Math.max(maxSlot, slot)
+      }
+    }
+
+    let slot = maxSlot + 1
+
+    for (const routeId of routes) {
+      const existing = offsetByRoute.get(routeId)
+      if (existing !== undefined) usedOffsets.add(existing)
+    }
+
+    for (const routeId of routes) {
+      if (offsetByRoute.has(routeId)) continue
+
+      let candidate = offsetForSlot(slot, step, base)
+      while (usedOffsets.has(candidate)) {
+        slot++
+        candidate = offsetForSlot(slot, step, base)
+      }
+      offsetByRoute.set(routeId, candidate)
+      usedOffsets.add(candidate)
+      slot++
+    }
+  }
+
   return offsetByRoute
 }
 
 const addRoutes = (map: maplibregl.Map) => {
   const trips = mtaStore.trips ?? []
   const routeOffsets = buildRouteOffsets(trips)
-
   const routeShapesMap = new Map<string, Set<string>>()
   const seenEndpoints = new Map<string, Set<string>>()
 
   for (const trip of mtaStore.trips ?? []) {
     if (!trip.shapeId) continue
 
-    if (!isNorthbound(trip.shapeId)) continue
+    if (!isNorthbound(trip.shapeId) || isExpressOrZ(trip.routeId)) continue
 
     const points = mtaStore.groupedShapes[trip.shapeId]
     if (!points || points.length === 0) continue
@@ -97,6 +141,7 @@ const addRoutes = (map: maplibregl.Map) => {
   }> = []
 
   for (const [routeId, shapeIds] of routeShapesMap) {
+    if (!routeOffsets.has(routeId)) continue
     const offset = routeOffsets.get(routeId) ?? 0
     for (const shapeId of shapeIds) {
       const points = mtaStore.groupedShapes[shapeId]
