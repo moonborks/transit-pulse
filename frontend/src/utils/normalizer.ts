@@ -1,4 +1,4 @@
-import type { Route, RouteAPI, Trip, TripAPI } from '@/types/mta'
+import type { NextStop, NextStopAPI, Route, RouteAPI, Trip, TripAPI } from '@/types/mta'
 
 export function normalizeRouteFields(route: RouteAPI): Route {
   return {
@@ -18,5 +18,14 @@ export function normalizeTripFields(trip: TripAPI): Trip {
     headsign: trip.headsign,
     directionId: trip.direction_id,
     shapeId: trip.shape_id,
+  }
+}
+
+export function normalizeNextStopFields(nextStop: NextStopAPI): NextStop {
+  return {
+    stopId: nextStop.stop_id,
+    tripId: nextStop.trip_id,
+    routeId: nextStop.route_id,
+    arrivalTime: nextStop.arrival_time,
   }
 }

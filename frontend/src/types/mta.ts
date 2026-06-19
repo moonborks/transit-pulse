@@ -45,3 +45,17 @@ export interface TripAPI {
   direction_id: 0 | 1
   shape_id: string | null
 }
+
+export interface NextStopAPI {
+  stop_id: string
+  trip_id: string
+  route_id: string
+  arrival_time: string
+}
+
+export interface NextStop {
+  stopId: string
+  tripId: string
+  routeId: string
+  arrivalTime: string
+}

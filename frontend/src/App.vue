@@ -25,7 +25,7 @@ const initMap = (el: HTMLDivElement): maplibregl.Map => {
 }
 
 function isNorthbound(shapeId: string): boolean {
-  return /\.\.N/.test(shapeId)
+  return /\.+N/.test(shapeId)
 }
 
 function isExpressOrZ(routeId: string): boolean {
@@ -230,6 +230,79 @@ const addStops = (map: maplibregl.Map) => {
   })
 }
 
+const addTrainLocations = (map: maplibregl.Map) => {
+  const lookup = mtaStore.stopLocationLookup
+
+  const features: Array<{
+    type: 'Feature'
+    geometry: { type: 'Point'; coordinates: [number, number] }
+    properties: {
+      stopId: string
+      routeId: string
+      color: string
+      priority: number
+    }
+  }> = []
+  let priority = 1
+
+  for (const nextStop of mtaStore.nextStops ?? []) {
+    if (nextStop.routeId === 'FS') {
+      console.log(lookup.get(nextStop.stopId))
+    }
+    const stopLocation = lookup.get(nextStop.stopId)
+    if (stopLocation === undefined) continue
+    features.push({
+      type: 'Feature',
+      geometry: { type: 'Point', coordinates: [stopLocation.lon, stopLocation.lat] },
+      properties: {
+        stopId: nextStop.stopId,
+        routeId: nextStop.routeId,
+        color: mtaStore.getRouteColor(nextStop.routeId),
+        priority: priority++,
+      },
+    })
+  }
+  map.addSource('next-stops', {
+    type: 'geojson',
+    data: {
+      type: 'FeatureCollection',
+      features,
+    },
+  })
+  map.addLayer({
+    id: 'next-stops-circles',
+    type: 'circle',
+    source: 'next-stops',
+    minzoom: 11,
+    layout: {
+      'circle-sort-key': ['get', 'priority'],
+    },
+    paint: {
+      'circle-radius': 8,
+      'circle-color': ['get', 'color'],
+      'circle-stroke-width': 1.5,
+      'circle-stroke-color': '#000000',
+    },
+  })
+
+  map.addLayer({
+    id: 'next-stops-labels',
+    type: 'symbol',
+    source: 'next-stops',
+    minzoom: 11,
+    layout: {
+      'text-field': ['get', 'routeId'],
+      'text-font': ['Open Sans Bold'],
+      'text-size': 12,
+      'text-allow-overlap': false,
+      'symbol-sort-key': ['get', 'priority'],
+    },
+    paint: {
+      'text-color': '#ffffff',
+    },
+  })
+}
+
 onMounted(async () => {
   await mtaStore.load()
   if (!mapEl.value) return
@@ -238,10 +311,7 @@ onMounted(async () => {
   map.on('load', () => {
     addRoutes(map!)
     addStops(map!)
-  })
-
-  map.on('zoom', () => {
-    console.log('zoom:', map!.getZoom())
+    addTrainLocations(map!)
   })
 })
 
