@@ -54,10 +54,11 @@ func RetrieveStaticGTFS(ctx context.Context, pool *pgxpool.Pool, gtfsURL string)
 	}
 
 	queries := map[string]string{
-		"routes.txt": "COPY routes_staging FROM STDIN CSV HEADER",
-		"shapes.txt": "COPY shapes_staging FROM STDIN CSV HEADER",
-		"stops.txt":  "COPY stops_staging FROM STDIN CSV HEADER",
-		"trips.txt":  "COPY trips_staging FROM STDIN CSV HEADER",
+		"routes.txt":     "COPY routes_staging FROM STDIN CSV HEADER",
+		"shapes.txt":     "COPY shapes_staging FROM STDIN CSV HEADER",
+		"stops.txt":      "COPY stops_staging FROM STDIN CSV HEADER",
+		"trips.txt":      "COPY trips_staging FROM STDIN CSV HEADER",
+		"stop_times.txt": "COPY times_staging FROM STDIN CSV HEADER",
 	}
 
 	for _, file := range zr.File {
@@ -133,6 +134,14 @@ func createStagingTables(ctx context.Context, tx pgx.Tx) error {
 				, direction_id SMALLINT
 				, shape_id TEXT
 			) ON COMMIT DROP;
+
+			CREATE TEMP TABLE times_staging (
+				trip_id TEXT
+				, stop_id TEXT
+				, arrival_time TEXT
+				, departure_time TEXT
+				, stop_sequence INT
+			) ON COMMIT DROP;
 		`,
 	)
 	return err
@@ -142,7 +151,7 @@ func moveFromStaging(ctx context.Context, tx pgx.Tx) error {
 	_, err := tx.Exec(
 		ctx,
 		`
-			TRUNCATE routes, shapes, stops, trips;
+			TRUNCATE routes, shapes, stops, trips, times;
 
 			INSERT INTO routes (
 				id
@@ -205,6 +214,21 @@ func moveFromStaging(ctx context.Context, tx pgx.Tx) error {
 				, direction_id
 				, shape_id
 			FROM trips_staging;
+
+			INSERT INTO times (
+				trip_id
+				, stop_id
+				, arrival_time
+				, departure_time
+				, stop_sequence
+			)
+			SELECT
+				trip_id
+				, stop_id
+				, arrival_time
+				, departure_time
+				, stop_sequence
+			FROM times_staging;
 		`,
 	)
 	return err

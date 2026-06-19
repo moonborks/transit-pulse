@@ -9,6 +9,7 @@ import (
 	"github.com/moonborks/transit-pulse/internal/transit/mta/routes"
 	"github.com/moonborks/transit-pulse/internal/transit/mta/shapes"
 	"github.com/moonborks/transit-pulse/internal/transit/mta/stops"
+	"github.com/moonborks/transit-pulse/internal/transit/mta/times"
 	"github.com/moonborks/transit-pulse/internal/transit/mta/trips"
 )
 
@@ -17,6 +18,7 @@ type Handlers struct {
 	Shape *shapes.ShapeHandler
 	Stop  *stops.StopHandler
 	Trip  *trips.TripHandler
+	Time  *times.TimeHandler
 }
 
 func MainRouter(h *Handlers) http.Handler {
@@ -34,5 +36,6 @@ func MTARouter(h *Handlers) http.Handler {
 	r.Mount("/shapes", shapes.ShapeRoutes(h.Shape))
 	r.Mount("/stops", stops.StopRoutes(h.Stop))
 	r.Mount("/trips", trips.TripRoutes(h.Trip))
+	r.Mount("/times", times.TimeRoutes(h.Time))
 	return r
 }

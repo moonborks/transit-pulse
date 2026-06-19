@@ -54,6 +54,15 @@ func Migrate(ctx context.Context, conn *pgxpool.Pool) error {
 				direction_id    SMALLINT,
 				shape_id        TEXT NULL
 			);
+
+			CREATE TABLE IF NOT EXISTS times (
+				trip_id        TEXT REFERENCES trips(id),
+				stop_id        TEXT REFERENCES stops(id),
+				arrival_time   TEXT,
+				departure_time TEXT,
+				stop_sequence  INT,
+				PRIMARY KEY (trip_id, stop_id)
+			);
 		`},
 	}
 

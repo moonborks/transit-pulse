@@ -16,6 +16,7 @@ import (
 	"github.com/moonborks/transit-pulse/internal/transit/mta/routes"
 	"github.com/moonborks/transit-pulse/internal/transit/mta/shapes"
 	"github.com/moonborks/transit-pulse/internal/transit/mta/stops"
+	"github.com/moonborks/transit-pulse/internal/transit/mta/times"
 	"github.com/moonborks/transit-pulse/internal/transit/mta/trips"
 )
 
@@ -85,22 +86,26 @@ func NewApp() *App {
 	shapeRepo := shapes.NewShapeRepo(db)
 	stopRepo := stops.NewStopRepo(db)
 	tripRepo := trips.NewTripRepo(db)
+	timeRepo := times.NewTimeRepo(db, rdb)
 
 	routeService := routes.NewRouteService(routeRepo)
 	shapeService := shapes.NewShapeService(shapeRepo)
 	stopService := stops.NewStopService(stopRepo)
 	tripService := trips.NewTripService(tripRepo)
+	timeService := times.NewTimeService(timeRepo)
 
 	routeHandler := routes.NewRouteHandler(routeService)
 	shapeHandler := shapes.NewShapeHandler(shapeService)
 	stopHandler := stops.NewStopHandler(stopService)
 	tripHandler := trips.NewTripHandler(tripService)
+	timeHandler := times.NewTimeHandler(timeService)
 
 	handlers := server.Handlers{
 		Route: routeHandler,
 		Shape: shapeHandler,
 		Stop:  stopHandler,
 		Trip:  tripHandler,
+		Time:  timeHandler,
 	}
 
 	router := server.MainRouter(&handlers)
