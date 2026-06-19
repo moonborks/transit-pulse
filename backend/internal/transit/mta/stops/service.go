@@ -1,13 +1,18 @@
 package stops
 
-import "context"
+import (
+	"context"
+
+	nextstop "github.com/moonborks/transit-pulse/internal/transit/mta/nextstops"
+)
 
 type StopService struct {
-	stopRepo *StopRepo
+	stopRepo      *StopRepo
+	nextStopCache *nextstop.NextStopRepo
 }
 
-func NewStopService(sr *StopRepo) *StopService {
-	return &StopService{stopRepo: sr}
+func NewStopService(sr *StopRepo, nsc *nextstop.NextStopRepo) *StopService {
+	return &StopService{stopRepo: sr, nextStopCache: nsc}
 }
 
 func (s *StopService) GetAll(ctx context.Context) ([]Stop, error) {
@@ -16,4 +21,8 @@ func (s *StopService) GetAll(ctx context.Context) ([]Stop, error) {
 
 func (s *StopService) GetStop(ctx context.Context, id string) (Stop, error) {
 	return s.stopRepo.GetStop(ctx, id)
+}
+
+func (s *StopService) GetAllNextSpots(ctx context.Context) ([]nextstop.NextStop, error) {
+	return s.nextStopCache.GetAllNextStops(ctx)
 }
