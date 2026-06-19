@@ -3,6 +3,7 @@ import { onMounted, onUnmounted, ref } from 'vue'
 import maplibregl from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import { useMtaStore } from './stores/mtaStore'
+import type { Trip } from './types/mta'
 
 const mtaStore = useMtaStore()
 const mapEl = ref<HTMLDivElement | null>(null)
@@ -23,28 +24,116 @@ const initMap = (el: HTMLDivElement): maplibregl.Map => {
   })
 }
 
-const addRoutes = (map: maplibregl.Map) => {
-  const features = Object.entries(mtaStore.groupedShapes).map(([shapeId, points]) => ({
-    type: 'Feature' as const,
-    properties: { color: mtaStore.getShapeColor(shapeId) },
-    geometry: {
-      type: 'LineString' as const,
-      coordinates: points.map(([lat, lon]) => [lon, lat]),
-    },
-  }))
+function isNorthbound(shapeId: string): boolean {
+  return /\.\.N/.test(shapeId)
+}
 
-  map.addSource('routes', {
+function getEndpointKey(points: [number, number][]): string {
+  const start = points[0]
+  const end = points[points.length - 1]
+  if (!start || !end) return ''
+  return `${start[0]},${start[1]}|${end[0]},${end[1]}`
+}
+
+function buildRouteOffsets(trips: Trip[]): Map<string, number> {
+  const headsignGroups = new Map<string, Set<string>>()
+
+  for (const trip of trips) {
+    if (!trip.headsign) continue
+    if (!headsignGroups.has(trip.headsign)) {
+      headsignGroups.set(trip.headsign, new Set())
+    }
+    headsignGroups.get(trip.headsign)!.add(trip.routeId)
+  }
+
+  const offsetByRoute = new Map<string, number>()
+
+  for (const [, routeIds] of headsignGroups) {
+    const routes = [...routeIds]
+    if (routes.length < 2) continue
+    routes.forEach((routeId, index) => {
+      const magnitude = Math.floor(index / 2) * 1 + 4
+      const sign = index % 2 === 0 ? 1 : -1
+      offsetByRoute.set(routeId, sign * magnitude)
+    })
+  }
+  return offsetByRoute
+}
+
+const addRoutes = (map: maplibregl.Map) => {
+  const trips = mtaStore.trips ?? []
+  const routeOffsets = buildRouteOffsets(trips)
+
+  const routeShapesMap = new Map<string, Set<string>>()
+  const seenEndpoints = new Map<string, Set<string>>()
+
+  for (const trip of mtaStore.trips ?? []) {
+    if (!trip.shapeId) continue
+
+    if (!isNorthbound(trip.shapeId)) continue
+
+    const points = mtaStore.groupedShapes[trip.shapeId]
+    if (!points || points.length === 0) continue
+
+    const endpointKey = getEndpointKey(points)
+
+    if (!seenEndpoints.has(trip.routeId)) {
+      seenEndpoints.set(trip.routeId, new Set())
+    }
+    const routeEndpoints = seenEndpoints.get(trip.routeId)!
+    if (routeEndpoints.has(endpointKey)) continue
+    routeEndpoints.add(endpointKey)
+
+    if (!routeShapesMap.has(trip.routeId)) {
+      routeShapesMap.set(trip.routeId, new Set())
+    }
+    routeShapesMap.get(trip.routeId)!.add(trip.shapeId)
+  }
+
+  const features: Array<{
+    type: 'Feature'
+    properties: { color: string; offset: number }
+    geometry: { type: 'LineString'; coordinates: [number, number][] }
+  }> = []
+
+  for (const [routeId, shapeIds] of routeShapesMap) {
+    const offset = routeOffsets.get(routeId) ?? 0
+    for (const shapeId of shapeIds) {
+      const points = mtaStore.groupedShapes[shapeId]
+      if (!points) continue
+
+      features.push({
+        type: 'Feature',
+        properties: { color: mtaStore.getShapeColor(shapeId), offset },
+        geometry: {
+          type: 'LineString',
+          coordinates: points,
+        },
+      })
+    }
+  }
+
+  map.addSource('shapes', {
     type: 'geojson',
     data: { type: 'FeatureCollection', features },
   })
 
   map.addLayer({
-    id: 'routes',
+    id: 'shapes-layer',
     type: 'line',
-    source: 'routes',
+    source: 'shapes',
     paint: {
       'line-color': ['get', 'color'],
-      'line-width': 2,
+      'line-width': 4,
+      'line-offset': [
+        'interpolate',
+        ['linear'],
+        ['zoom'],
+        10,
+        ['*', ['get', 'offset'], 0.3],
+        16,
+        ['get', 'offset'],
+      ],
     },
   })
 }

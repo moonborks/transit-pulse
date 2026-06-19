@@ -57,17 +57,24 @@ export const useMtaStore = defineStore('mta', () => {
     }
     for (const p of points) {
       const pts = grouped[p.id] ?? []
-      pts.push([p.lat, p.lon])
+      pts.push([p.lon, p.lat])
       grouped[p.id] = pts
     }
     return grouped
   }
 
+  const shapeColorMap = computed(() => {
+    const map = new Map<string, string>()
+    for (const trip of trips.value ?? []) {
+      if (!trip.shapeId) continue
+      const route = routes.value?.find((r) => r.id === trip.routeId)
+      map.set(trip.shapeId, route ? `#${route.color}` : '#888888')
+    }
+    return map
+  })
+
   function getShapeColor(shapeId: string): string {
-    const trip = trips.value?.find((t) => t.shapeId === shapeId)
-    if (!trip) return '#888888'
-    const route = routes.value?.find((r) => r.id === trip.routeId)
-    return route ? `#${route?.color}` : '#888888'
+    return shapeColorMap.value.get(shapeId) ?? '#888888'
   }
 
   return {
