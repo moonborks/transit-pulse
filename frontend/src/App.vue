@@ -41,7 +41,6 @@ function getEndpointKey(points: [number, number][]): string {
 
 function buildRouteOffsets(trips: Trip[]): Map<string, number> {
   const headsignGroups = new Map<string, Set<string>>()
-
   for (const trip of trips) {
     if (!trip.headsign || isExpressOrZ(trip.routeId)) continue
     if (!headsignGroups.has(trip.headsign)) {
@@ -56,7 +55,6 @@ function buildRouteOffsets(trips: Trip[]): Map<string, number> {
   const offsetByRoute = new Map<string, number>()
   const step = 4
   const base = 2
-
   function offsetForSlot(slot: number, step: number, base: number): number {
     const magnitude = Math.floor(slot / 2) * step + base
     return slot % 2 === 0 ? magnitude : -magnitude
@@ -146,7 +144,6 @@ const addRoutes = (map: maplibregl.Map) => {
     for (const shapeId of shapeIds) {
       const points = mtaStore.groupedShapes[shapeId]
       if (!points) continue
-
       features.push({
         type: 'Feature',
         properties: { color: mtaStore.getShapeColor(shapeId), offset },
@@ -167,6 +164,10 @@ const addRoutes = (map: maplibregl.Map) => {
     id: 'shapes-layer',
     type: 'line',
     source: 'shapes',
+    layout: {
+      'line-join': 'round', // Smooths the sharp elbow corners
+      'line-cap': 'round',
+    },
     paint: {
       'line-color': ['get', 'color'],
       'line-width': 4,
@@ -238,10 +239,6 @@ onMounted(async () => {
   map.on('load', () => {
     addRoutes(map!)
     addStops(map!)
-  })
-
-  map.on('zoom', () => {
-    console.log('zoom:', map!.getZoom())
   })
 })
 
