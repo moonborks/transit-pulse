@@ -22,19 +22,19 @@ func (h *ShapeService) GetShape(ctx context.Context, id string) ([]Shape, error)
 }
 
 func (h *ShapeService) GetSimplifiedShapes(ctx context.Context) ([]Shape, error) {
-	shape_id_map, err := h.shapeRepo.GetAllGroupedByShapeID(ctx)
+	shapeIdMap, err := h.shapeRepo.GetAllGroupedByShapeID(ctx)
 	if err != nil {
 		return []Shape{}, err
 	}
 
-	shapes_num := 0
-	for shape_id, points := range shape_id_map {
-		simplified_shapes := simplifyTransitPoints(points, 0.7, 0.0012)
-		shapes_num += len(simplified_shapes)
-		shape_id_map[shape_id] = simplified_shapes
+	shapesNum := 0
+	for shapeId, points := range shapeIdMap {
+		simplifiedShapes := simplifyTransitPoints(points, 0.7, 0.0012)
+		shapesNum += len(simplifiedShapes)
+		shapeIdMap[shapeId] = simplifiedShapes
 	}
-	result := make([]Shape, 0, shapes_num)
-	for _, points := range shape_id_map {
+	result := make([]Shape, 0, shapesNum)
+	for _, points := range shapeIdMap {
 		result = append(result, points...)
 	}
 	return result, nil

@@ -26,17 +26,17 @@ func ShapeRoutes(h *ShapeHandler) http.Handler {
 }
 
 func (h *ShapeHandler) GetAll(w http.ResponseWriter, r *http.Request) {
-	simplify_str := r.URL.Query().Get("simplify")
-	if simplify_str == "" {
-		simplify_str = "false"
+	simplifyStr := r.URL.Query().Get("simplify")
+	if simplifyStr == "" {
+		simplifyStr = "false"
 	}
-	simplify, err := strconv.ParseBool(simplify_str)
+	simplify, err := strconv.ParseBool(simplifyStr)
 	if err != nil {
 		web.WriteError(w, http.StatusBadRequest, "BAD_REQUEST", "invalid simplify param")
 		return
 	}
 
-	shapes, err := []Shape{}, nil
+	var shapes []Shape
 	if simplify {
 		shapes, err = h.shapeService.GetSimplifiedShapes(r.Context())
 	} else {
