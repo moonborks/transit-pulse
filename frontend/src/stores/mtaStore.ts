@@ -41,7 +41,7 @@ export const useMtaStore = defineStore('mta', () => {
     await Promise.all([
       fetchStops('/api/mta/stops'),
       fetchShapes('/api/mta/shapes?simplify=true'),
-      fetchTrips('/api/mta/trips'),
+      fetchTrips('/api/mta/trips/today'),
       fetchRoutes('/api/mta/routes'),
     ])
   }

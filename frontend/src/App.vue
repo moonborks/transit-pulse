@@ -16,7 +16,7 @@ const initMap = (el: HTMLDivElement): maplibregl.Map => {
     center: [-74.013, 40.706],
     zoom: 13,
     minZoom: 10,
-    maxZoom: 18,
+    maxZoom: 17,
     maxBounds: [
       [-76.0, 39.0],
       [-71.0, 42.5],

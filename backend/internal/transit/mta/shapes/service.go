@@ -29,7 +29,7 @@ func (h *ShapeService) GetSimplifiedShapes(ctx context.Context) ([]Shape, error)
 
 	shapesNum := 0
 	for shapeId, points := range shapeIdMap {
-		simplifiedShapes := simplifyTransitPoints(points, 0.7, 0.0012)
+		simplifiedShapes := simplifyTransitPoints(points, 0.7, 0.00055)
 		shapesNum += len(simplifiedShapes)
 		shapeIdMap[shapeId] = simplifiedShapes
 	}

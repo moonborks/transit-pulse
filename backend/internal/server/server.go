@@ -23,6 +23,7 @@ type Handlers struct {
 
 func MainRouter(h *Handlers) http.Handler {
 	r := chi.NewRouter()
+	r.Use(middleware.Compress(5))
 	r.Use(middleware.Logger)
 	r.Route("/api", func(api chi.Router) {
 		api.Mount("/mta", MTARouter(h))
