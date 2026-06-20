@@ -2,7 +2,9 @@ package shapes
 
 import (
 	"context"
+	"log"
 	"log/slog"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -81,4 +83,31 @@ func (r *ShapeRepo) GetShape(ctx context.Context, id string) ([]Shape, error) {
 	}
 
 	return shapes, nil
+}
+
+func (r *ShapeRepo) GetAllGroupedByShapeID(ctx context.Context) (map[string][]Shape, error) {
+	start := time.Now()
+	rows, err := r.db.Query(ctx, `
+        SELECT id, sequence, lat, lon
+        FROM shapes
+        ORDER BY id, sequence
+    `)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	log.Printf("query took: %v", time.Since(start))
+
+	start = time.Now()
+	grouped := make(map[string][]Shape)
+	for rows.Next() {
+		var s Shape
+		if err := rows.Scan(&s.ID, &s.Sequence, &s.Lat, &s.Lon); err != nil {
+			return nil, err
+		}
+		grouped[s.ID] = append(grouped[s.ID], s)
+	}
+	log.Printf("query took: %v", time.Since(start))
+
+	return grouped, rows.Err()
 }

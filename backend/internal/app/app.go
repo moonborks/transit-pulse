@@ -2,7 +2,6 @@ package app
 
 import (
 	"context"
-	"log"
 	"log/slog"
 	"net/http"
 	"os"
@@ -53,13 +52,17 @@ func NewApp() *App {
 	slog.SetDefault(logger)
 
 	ctx := context.Background()
-
-	db, err := pgxpool.New(ctx, os.Getenv("DATABASE_URL"))
+	config, err := pgxpool.ParseConfig(os.Getenv("DATABASE_URL"))
 	if err != nil {
-		log.Fatal("Connect to database:", err)
-		panic(err)
+		slog.Error("Parse database config:", "err", err)
 	}
-	config := db.Config()
+	config.MinConns = 5
+
+	db, err := pgxpool.NewWithConfig(ctx, config)
+	if err != nil {
+		slog.Error("Connect to database:", "err", err)
+	}
+
 	slog.Info(
 		"Connected to database",
 		"host", config.ConnConfig.Host,
