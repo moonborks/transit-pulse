@@ -217,8 +217,9 @@ const addStops = (map: maplibregl.Map) => {
     source: 'stops',
     layout: {
       'text-field': ['get', 'name'],
+      'text-font': ['Open Sans Bold'],
       'text-size': 11,
-      'text-offset': [0.8, 0],
+      'text-offset': [1, 0],
       'text-anchor': 'left',
       'text-optional': true,
     },
