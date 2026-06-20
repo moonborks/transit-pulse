@@ -179,7 +179,9 @@ func moveFromStaging(ctx context.Context, tx pgx.Tx) error {
 				, shape_pt_sequence
 				, shape_pt_lat
 				, shape_pt_lon
-			FROM shapes_staging;
+			FROM shapes_staging
+			WHERE shape_id ~ '\.\.N'
+			ON CONFLICT (lat, lon) DO NOTHING;
 
 			INSERT INTO stops (
 				id

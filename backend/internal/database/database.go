@@ -46,6 +46,9 @@ func Migrate(ctx context.Context, conn *pgxpool.Pool) error {
 				PRIMARY KEY (id, sequence)
 			);
 
+			ALTER TABLE shapes
+			ADD CONSTRAINT unique_lat_lon UNIQUE(lat, lon);
+
 			CREATE TYPE freq_day AS ENUM (
 				'everyday'
 				, 'weekday'
