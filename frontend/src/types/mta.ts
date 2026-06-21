@@ -39,3 +39,17 @@ export interface TripAPI {
   headsign: string
   shape_id: string | null
 }
+
+export interface NextStopAPI {
+  stop_id: string
+  trip_id: string
+  route_id: string
+  arrival_time: string
+}
+
+export interface NextStop {
+  stopId: string
+  tripId: string
+  routeId: string
+  arrivalTime: string
+}

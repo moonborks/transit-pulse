@@ -6,10 +6,17 @@ import {
   type Trip,
   type RouteAPI,
   type TripAPI,
+  type NextStopAPI,
+  type NextStop,
 } from '@/types/mta'
 import { useFetch } from '@/composables/api/useFetch'
 import { computed } from 'vue'
-import { normalizeRouteFields, normalizeTripFields } from '@/utils/normalizer'
+import {
+  normalizeNextStopFields,
+  normalizeRouteFields,
+  normalizeTripFields,
+} from '@/utils/normalizer'
+import { endpoints } from '@/api/endpoints'
 
 export const useMtaStore = defineStore('mta', () => {
   const {
@@ -37,12 +44,20 @@ export const useMtaStore = defineStore('mta', () => {
     fetchData: fetchRoutes,
   } = useFetch<RouteAPI[], Route[]>((data) => data.map(normalizeRouteFields))
 
+  const {
+    data: nextStops,
+    loading: nextStopsLoading,
+    error: nextStopsError,
+    fetchData: fetchNextStops,
+  } = useFetch<NextStopAPI[], NextStop[]>((data) => data.map(normalizeNextStopFields))
+
   const load = async () => {
     await Promise.all([
-      fetchStops('/api/mta/stops'),
-      fetchShapes('/api/mta/shapes?simplify=true'),
-      fetchTrips('/api/mta/trips/today'),
-      fetchRoutes('/api/mta/routes'),
+      fetchStops(endpoints.mta.stops.getAll),
+      fetchShapes(endpoints.mta.shapes.getAll),
+      fetchTrips(endpoints.mta.trips.getAll),
+      fetchRoutes(endpoints.mta.routes.getAll),
+      fetchNextStops(endpoints.mta.routes.getAllNextStops),
     ])
   }
 
@@ -77,11 +92,33 @@ export const useMtaStore = defineStore('mta', () => {
     return shapeColorMap.value.get(shapeId) ?? '#888888'
   }
 
+  const routeColorMap = computed(() => {
+    const map = new Map<string, string>()
+    for (const route of routes.value ?? []) {
+      map.set(route.id, `#${route.color}`)
+    }
+    return map
+  })
+
+  function getRouteColor(routeId: string): string {
+    return routeColorMap.value.get(routeId) ?? '#888888'
+  }
+
+  const stopLocationLookup = computed(() => {
+    const lookup = new Map<string, Stop>()
+    for (const stop of stops.value ?? []) {
+      lookup.set(stop.id, stop)
+    }
+    return lookup
+  })
+
   return {
     stops,
     groupedShapes,
     routes,
     trips,
+    nextStops,
+    stopLocationLookup,
     stopsLoading,
     stopsError,
     shapesLoading,
@@ -90,7 +127,10 @@ export const useMtaStore = defineStore('mta', () => {
     routesError,
     tripsLoading,
     tripsError,
+    nextStopsLoading,
+    nextStopsError,
     load,
     getShapeColor,
+    getRouteColor,
   }
 })
