@@ -54,8 +54,8 @@ export const useMtaStore = defineStore('mta', () => {
   const load = async () => {
     await Promise.all([
       fetchStops(endpoints.mta.stops.getAll),
-      fetchShapes(endpoints.mta.shapes.getAll),
-      fetchTrips(endpoints.mta.trips.getAll),
+      fetchShapes(endpoints.mta.shapes.getAllSimplified),
+      fetchTrips(endpoints.mta.trips.getAllToday),
       fetchRoutes(endpoints.mta.routes.getAll),
       fetchNextStops(endpoints.mta.routes.getAllNextStops),
     ])
@@ -76,20 +76,6 @@ export const useMtaStore = defineStore('mta', () => {
       grouped[p.id] = pts
     }
     return grouped
-  }
-
-  const shapeColorMap = computed(() => {
-    const map = new Map<string, string>()
-    for (const trip of trips.value ?? []) {
-      if (!trip.shapeId) continue
-      const route = routes.value?.find((r) => r.id === trip.routeId)
-      map.set(trip.shapeId, route ? `#${route.color}` : '#888888')
-    }
-    return map
-  })
-
-  function getShapeColor(shapeId: string): string {
-    return shapeColorMap.value.get(shapeId) ?? '#888888'
   }
 
   const routeColorMap = computed(() => {
@@ -130,7 +116,6 @@ export const useMtaStore = defineStore('mta', () => {
     nextStopsLoading,
     nextStopsError,
     load,
-    getShapeColor,
     getRouteColor,
   }
 })

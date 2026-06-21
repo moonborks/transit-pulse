@@ -39,82 +39,111 @@ function getEndpointKey(points: [number, number][]): string {
   return `${start[0]},${start[1]}|${end[0]},${end[1]}`
 }
 
-function buildRouteOffsets(trips: Trip[]): Map<string, number> {
-  const headsignGroups = new Map<string, Set<string>>()
+function buildShapeOffsets(
+  trips: Trip[],
+  groupedShapes: Record<string, [number, number][]>,
+): Map<string, number> {
+  const routeShapesMap = new Map<string, Set<string>>()
   for (const trip of trips) {
-    if (!trip.headsign || isExpressOrZ(trip.routeId)) continue
-    if (!headsignGroups.has(trip.headsign)) {
-      headsignGroups.set(trip.headsign, new Set())
+    if (!trip.shapeId || !isNorthbound(trip.shapeId) || isExpressOrZ(trip.routeId)) continue
+    if (!routeShapesMap.has(trip.routeId)) {
+      routeShapesMap.set(trip.routeId, new Set())
     }
-    headsignGroups.get(trip.headsign)!.add(trip.routeId)
+    routeShapesMap.get(trip.routeId)!.add(trip.shapeId)
   }
-  const sortedGroups = [...headsignGroups.entries()].sort((a, b) => {
-    if (b[1].size !== a[1].size) return b[1].size - a[1].size
-    return a[0].localeCompare(b[0])
-  })
-  const offsetByRoute = new Map<string, number>()
-  const step = 4
-  const base = 2
+
+  const offsetByShape = new Map<string, number>()
+
+  const globalCoordinateOffsets = new Map<string, Set<number>>()
+
+  const step = 5
+  const base = 3
+
   function offsetForSlot(slot: number, step: number, base: number): number {
-    const magnitude = Math.floor(slot / 2) * step + base
-    return slot % 2 === 0 ? magnitude : -magnitude
+    const group = Math.floor(slot / 4)
+    const withinGroup = slot % 4
+    const isPositive = withinGroup < 2
+
+    const stepMultiplier = group * 2 + (withinGroup % 2)
+    const magnitude = stepMultiplier * step + base
+
+    return isPositive ? magnitude : -magnitude
   }
-  function slotFromOffset(offset: number, step: number, base: number): number {
-    const group = (Math.abs(offset) - base) / step
-    return group * 2 + (offset < 0 ? 1 : 0)
-  }
-  for (const [, routes] of sortedGroups) {
-    const usedOffsets = new Set<number>()
 
-    let maxSlot = -1
+  for (const [, shapeIds] of routeShapesMap) {
+    const routeCoordinateKeys: string[] = []
 
-    for (const routeId of routes) {
-      const existing = offsetByRoute.get(routeId)
-      if (existing === undefined) continue
+    for (const shapeId of shapeIds) {
+      const points = groupedShapes[shapeId]
+      if (!points || points.length === 0) continue
 
-      const slot = slotFromOffset(existing, step, base)
+      // Look at the first 5 track points to evaluate the local terminal corridor space
+      const pointsToAnalyze = points.slice(0, 5)
+      for (const [lon, lat] of pointsToAnalyze) {
+        routeCoordinateKeys.push(`${lat.toFixed(4)},${lon.toFixed(4)}`)
+      }
 
-      if (!Number.isNaN(slot)) {
-        maxSlot = Math.max(maxSlot, slot)
+      if (points.length > 5) {
+        const endPoints = points.slice(-5)
+        for (const [lon, lat] of endPoints) {
+          routeCoordinateKeys.push(`${lat.toFixed(4)},${lon.toFixed(4)}`)
+        }
       }
     }
 
-    let slot = maxSlot + 1
+    let slot = 0
+    let candidate = offsetForSlot(slot, step, base)
+    let hasCollision = true
 
-    for (const routeId of routes) {
-      const existing = offsetByRoute.get(routeId)
-      if (existing !== undefined) usedOffsets.add(existing)
-    }
+    // Scan the global path ledger for track path conflicts
+    while (hasCollision) {
+      hasCollision = false
 
-    for (const routeId of routes) {
-      if (offsetByRoute.has(routeId)) continue
+      // If ANY of our line's initial coordinates overlap with a lane slot already claimed
+      // by a different route, we must increment the slot lane globally.
+      for (const key of routeCoordinateKeys) {
+        if (globalCoordinateOffsets.get(key)?.has(candidate)) {
+          hasCollision = true
+          break
+        }
+      }
 
-      let candidate = offsetForSlot(slot, step, base)
-      while (usedOffsets.has(candidate)) {
+      if (hasCollision) {
         slot++
         candidate = offsetForSlot(slot, step, base)
       }
-      offsetByRoute.set(routeId, candidate)
-      usedOffsets.add(candidate)
-      slot++
+    }
+
+    for (const shapeId of shapeIds) {
+      offsetByShape.set(shapeId, candidate)
+    }
+
+    // Record this route path's coordinates to block other trains from taking this lane
+    for (const key of routeCoordinateKeys) {
+      if (!globalCoordinateOffsets.has(key)) {
+        globalCoordinateOffsets.set(key, new Set())
+      }
+      globalCoordinateOffsets.get(key)!.add(candidate)
     }
   }
 
-  return offsetByRoute
+  return offsetByShape
 }
 
 const addRoutes = (map: maplibregl.Map) => {
   const trips = mtaStore.trips ?? []
-  const routeOffsets = buildRouteOffsets(trips)
+  const groupedShapes = mtaStore.groupedShapes ?? {}
+
+  const shapeOffsets = buildShapeOffsets(trips, groupedShapes)
+
   const routeShapesMap = new Map<string, Set<string>>()
   const seenEndpoints = new Map<string, Set<string>>()
 
-  for (const trip of mtaStore.trips ?? []) {
+  for (const trip of trips) {
     if (!trip.shapeId) continue
-
     if (!isNorthbound(trip.shapeId) || isExpressOrZ(trip.routeId)) continue
 
-    const points = mtaStore.groupedShapes[trip.shapeId]
+    const points = groupedShapes[trip.shapeId]
     if (!points || points.length === 0) continue
 
     const endpointKey = getEndpointKey(points)
@@ -139,14 +168,18 @@ const addRoutes = (map: maplibregl.Map) => {
   }> = []
 
   for (const [routeId, shapeIds] of routeShapesMap) {
-    if (!routeOffsets.has(routeId)) continue
-    const offset = routeOffsets.get(routeId) ?? 0
     for (const shapeId of shapeIds) {
-      const points = mtaStore.groupedShapes[shapeId]
+      const points = groupedShapes[shapeId]
       if (!points) continue
+
+      const offset = shapeOffsets.get(shapeId) ?? 0
+
       features.push({
         type: 'Feature',
-        properties: { color: mtaStore.getShapeColor(shapeId), offset },
+        properties: {
+          color: mtaStore.getRouteColor(routeId),
+          offset,
+        },
         geometry: {
           type: 'LineString',
           coordinates: points,
@@ -165,7 +198,7 @@ const addRoutes = (map: maplibregl.Map) => {
     type: 'line',
     source: 'shapes',
     layout: {
-      'line-join': 'round', // Smooths the sharp elbow corners
+      'line-join': 'round',
       'line-cap': 'round',
     },
     paint: {
