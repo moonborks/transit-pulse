@@ -6,21 +6,24 @@ import (
 
 	"github.com/go-chi/chi"
 
+	"github.com/moonborks/transit-pulse/internal/transit/mta/stops"
 	"github.com/moonborks/transit-pulse/internal/web"
 )
 
 type RouteHandler struct {
 	routeService *RouteService
+	stopService  *stops.StopService
 }
 
-func NewRouteHandler(rs *RouteService) *RouteHandler {
-	return &RouteHandler{routeService: rs}
+func NewRouteHandler(rs *RouteService, ss *stops.StopService) *RouteHandler {
+	return &RouteHandler{routeService: rs, stopService: ss}
 }
 
 func RouteRoutes(h *RouteHandler) http.Handler {
 	r := chi.NewRouter()
 	r.Get("/", h.GetAll)
 	r.Get("/{id}", h.GetRoute)
+	r.Get("/next-stops", h.GetAllNextStops)
 	return r
 }
 
@@ -56,6 +59,23 @@ func (h *RouteHandler) GetRoute(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := web.WriteJson(w, http.StatusOK, route); err != nil {
+		slog.Error("writing response json")
+	}
+}
+
+func (h *RouteHandler) GetAllNextStops(w http.ResponseWriter, r *http.Request) {
+	next_stops, err := h.stopService.GetAllNextSpots(r.Context())
+	if err != nil {
+		web.WriteError(
+			w,
+			http.StatusInternalServerError,
+			"INTERNAL_ERROR",
+			"unable to retrieve next stops",
+		)
+		return
+	}
+
+	if err := web.WriteJson(w, http.StatusOK, next_stops); err != nil {
 		slog.Error("writing response json")
 	}
 }
