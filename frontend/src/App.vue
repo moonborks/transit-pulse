@@ -16,7 +16,7 @@ const initMap = (el: HTMLDivElement): maplibregl.Map => {
     center: [-74.013, 40.706],
     zoom: 13,
     minZoom: 10,
-    maxZoom: 18,
+    maxZoom: 17,
     maxBounds: [
       [-76.0, 39.0],
       [-71.0, 42.5],
@@ -41,7 +41,6 @@ function getEndpointKey(points: [number, number][]): string {
 
 function buildRouteOffsets(trips: Trip[]): Map<string, number> {
   const headsignGroups = new Map<string, Set<string>>()
-
   for (const trip of trips) {
     if (!trip.headsign || isExpressOrZ(trip.routeId)) continue
     if (!headsignGroups.has(trip.headsign)) {
@@ -56,7 +55,6 @@ function buildRouteOffsets(trips: Trip[]): Map<string, number> {
   const offsetByRoute = new Map<string, number>()
   const step = 4
   const base = 2
-
   function offsetForSlot(slot: number, step: number, base: number): number {
     const magnitude = Math.floor(slot / 2) * step + base
     return slot % 2 === 0 ? magnitude : -magnitude
@@ -146,7 +144,6 @@ const addRoutes = (map: maplibregl.Map) => {
     for (const shapeId of shapeIds) {
       const points = mtaStore.groupedShapes[shapeId]
       if (!points) continue
-
       features.push({
         type: 'Feature',
         properties: { color: mtaStore.getShapeColor(shapeId), offset },
@@ -167,6 +164,10 @@ const addRoutes = (map: maplibregl.Map) => {
     id: 'shapes-layer',
     type: 'line',
     source: 'shapes',
+    layout: {
+      'line-join': 'round', // Smooths the sharp elbow corners
+      'line-cap': 'round',
+    },
     paint: {
       'line-color': ['get', 'color'],
       'line-width': 4,

@@ -12,11 +12,8 @@ export function normalizeRouteFields(route: RouteAPI): Route {
 
 export function normalizeTripFields(trip: TripAPI): Trip {
   return {
-    id: trip.id,
     routeId: trip.route_id,
-    serviceId: trip.service_id,
     headsign: trip.headsign,
-    directionId: trip.direction_id,
     shapeId: trip.shape_id,
   }
 }

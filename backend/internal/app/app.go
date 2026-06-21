@@ -2,7 +2,6 @@ package app
 
 import (
 	"context"
-	"log"
 	"log/slog"
 	"net/http"
 	"os"
@@ -17,6 +16,7 @@ import (
 	"github.com/moonborks/transit-pulse/internal/transit/mta/routes"
 	"github.com/moonborks/transit-pulse/internal/transit/mta/shapes"
 	"github.com/moonborks/transit-pulse/internal/transit/mta/stops"
+	"github.com/moonborks/transit-pulse/internal/transit/mta/times"
 	"github.com/moonborks/transit-pulse/internal/transit/mta/trips"
 )
 
@@ -53,13 +53,17 @@ func NewApp() *App {
 	slog.SetDefault(logger)
 
 	ctx := context.Background()
-
-	db, err := pgxpool.New(ctx, os.Getenv("DATABASE_URL"))
+	config, err := pgxpool.ParseConfig(os.Getenv("DATABASE_URL"))
 	if err != nil {
-		log.Fatal("Connect to database:", err)
-		panic(err)
+		slog.Error("Parse database config:", "err", err)
 	}
-	config := db.Config()
+	config.MinConns = 5
+
+	db, err := pgxpool.NewWithConfig(ctx, config)
+	if err != nil {
+		slog.Error("Connect to database:", "err", err)
+	}
+
 	slog.Info(
 		"Connected to database",
 		"host", config.ConnConfig.Host,
@@ -86,23 +90,27 @@ func NewApp() *App {
 	shapeRepo := shapes.NewShapeRepo(db)
 	stopRepo := stops.NewStopRepo(db)
 	tripRepo := trips.NewTripRepo(db)
+	timeRepo := times.NewTimeRepo(db, rdb)
 	nextStopRepo := nextstop.NewNextStopRepo(rdb)
 
 	routeService := routes.NewRouteService(routeRepo)
 	shapeService := shapes.NewShapeService(shapeRepo)
 	stopService := stops.NewStopService(stopRepo, nextStopRepo)
 	tripService := trips.NewTripService(tripRepo)
+	timeService := times.NewTimeService(timeRepo)
 
 	routeHandler := routes.NewRouteHandler(routeService, stopService)
 	shapeHandler := shapes.NewShapeHandler(shapeService)
 	stopHandler := stops.NewStopHandler(stopService)
 	tripHandler := trips.NewTripHandler(tripService)
+	timeHandler := times.NewTimeHandler(timeService)
 
 	handlers := server.Handlers{
 		Route: routeHandler,
 		Shape: shapeHandler,
 		Stop:  stopHandler,
 		Trip:  tripHandler,
+		Time:  timeHandler,
 	}
 
 	router := server.MainRouter(&handlers)

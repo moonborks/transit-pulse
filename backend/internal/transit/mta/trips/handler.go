@@ -21,6 +21,7 @@ func TripRoutes(h *TripHandler) http.Handler {
 	r := chi.NewRouter()
 	r.Get("/", h.GetAll)
 	r.Get("/{id}", h.GetTrip)
+	r.Get("/today", h.GetTripsForToday)
 	return r
 }
 
@@ -56,6 +57,22 @@ func (h *TripHandler) GetTrip(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := web.WriteJson(w, http.StatusOK, trip); err != nil {
+		slog.Error("writing response json")
+	}
+}
+
+func (h *TripHandler) GetTripsForToday(w http.ResponseWriter, r *http.Request) {
+	trips, err := h.tripService.GetTripsForToday(r.Context())
+	if err != nil {
+		web.WriteError(
+			w,
+			http.StatusInternalServerError,
+			"INTERNAL_ERROR",
+			"unable to retrieve trips",
+		)
+		return
+	}
+	if err := web.WriteJson(w, http.StatusOK, trips); err != nil {
 		slog.Error("writing response json")
 	}
 }

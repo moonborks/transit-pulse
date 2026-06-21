@@ -53,6 +53,8 @@ func writeProtoMsgToCache(ctx context.Context, rdb *redis.Client, feed *pb.FeedM
 		var arrival time.Time
 		if stu.Arrival != nil && stu.Arrival.Time != nil {
 			arrival = time.Unix(*stu.Arrival.Time, 0)
+		} else {
+			continue
 		}
 
 		train := Train{
@@ -80,7 +82,7 @@ func writeProtoMsgToCache(ctx context.Context, rdb *redis.Client, feed *pb.FeedM
 
 		key := route + "_" + trip
 
-		err = rdb.Set(ctx, key, data, 10*time.Minute).Err()
+		err = rdb.Set(ctx, key, data, 30*time.Second).Err()
 		if err != nil {
 			slog.Error("adding train data to valkey cache", "err", err)
 		}
