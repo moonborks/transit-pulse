@@ -84,11 +84,13 @@ func (r *ShapeRepo) GetShape(ctx context.Context, id string) ([]Shape, error) {
 }
 
 func (r *ShapeRepo) GetAllGroupedByShapeID(ctx context.Context) (map[string][]Shape, error) {
-	rows, err := r.db.Query(ctx, `
+	stmt := `
         SELECT id, sequence, lat, lon
         FROM shapes
         ORDER BY id, sequence
-    `)
+    `
+
+	rows, err := r.db.Query(ctx, stmt)
 	if err != nil {
 		return nil, err
 	}
@@ -123,10 +125,7 @@ func (r *ShapeRepo) GetShapesGivenTargetShapeKey(
 		shapeIDs = append(shapeIDs, targetKey.ID)
 		sequences = append(sequences, int32(targetKey.Sequence))
 
-		prevSeq := targetKey.Sequence - 1
-		if prevSeq < 1 {
-			prevSeq = 1
-		}
+		prevSeq := max(targetKey.Sequence-1, 1)
 		shapeIDs = append(shapeIDs, targetKey.ID)
 		sequences = append(sequences, int32(prevSeq))
 	}
