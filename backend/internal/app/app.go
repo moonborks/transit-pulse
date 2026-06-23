@@ -12,7 +12,7 @@ import (
 	"github.com/moonborks/transit-pulse/internal/database"
 	"github.com/moonborks/transit-pulse/internal/jobs"
 	"github.com/moonborks/transit-pulse/internal/server"
-	nextstop "github.com/moonborks/transit-pulse/internal/transit/mta/nextstops"
+	"github.com/moonborks/transit-pulse/internal/transit/mta/nextstops"
 	"github.com/moonborks/transit-pulse/internal/transit/mta/routes"
 	"github.com/moonborks/transit-pulse/internal/transit/mta/shapes"
 	"github.com/moonborks/transit-pulse/internal/transit/mta/stops"
@@ -91,12 +91,12 @@ func NewApp() *App {
 	stopRepo := stops.NewStopRepo(db)
 	tripRepo := trips.NewTripRepo(db)
 	timeRepo := times.NewTimeRepo(db, rdb)
-	nextStopRepo := nextstop.NewNextStopRepo(rdb)
+	nextStopRepo := nextstops.NewNextStopRepo(rdb)
 
 	routeService := routes.NewRouteService(routeRepo)
 	shapeService := shapes.NewShapeService(shapeRepo)
 	stopService := stops.NewStopService(stopRepo, nextStopRepo)
-	tripService := trips.NewTripService(tripRepo)
+	tripService := trips.NewTripService(tripRepo, nextStopRepo, shapeRepo)
 	timeService := times.NewTimeService(timeRepo)
 
 	routeHandler := routes.NewRouteHandler(routeService, stopService)

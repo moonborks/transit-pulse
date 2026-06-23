@@ -105,3 +105,57 @@ func (r *ShapeRepo) GetAllGroupedByShapeID(ctx context.Context) (map[string][]Sh
 
 	return grouped, rows.Err()
 }
+
+func (r *ShapeRepo) GetShapesGivenTargetShapeKey(
+	ctx context.Context,
+	tripTargetSequenceMap map[string]TargetShapeKey,
+) (map[TargetShapeKey]Shape, error) {
+	coordMap := make(map[TargetShapeKey]Shape)
+	if len(tripTargetSequenceMap) == 0 {
+		return coordMap, nil
+	}
+
+	shapeIDs := make([]string, 0, len(tripTargetSequenceMap)*2)
+	sequences := make([]int32, 0, len(tripTargetSequenceMap)*2)
+
+	for _, targetKey := range tripTargetSequenceMap {
+
+		shapeIDs = append(shapeIDs, targetKey.ID)
+		sequences = append(sequences, int32(targetKey.Sequence))
+
+		prevSeq := targetKey.Sequence - 1
+		if prevSeq < 1 {
+			prevSeq = 1
+		}
+		shapeIDs = append(shapeIDs, targetKey.ID)
+		sequences = append(sequences, int32(prevSeq))
+	}
+
+	query := `
+		SELECT id, sequence, lat, lon
+		FROM shapes
+		WHERE (id, sequence) IN (
+			SELECT * FROM UNNEST($1::text[], $2::int[])
+		);
+	`
+
+	rows, err := r.db.Query(ctx, query, shapeIDs, sequences)
+	if err != nil {
+		slog.Error("pgx unnest query failed for exact shape rows", "err", err)
+		return nil, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var shape Shape
+		if err := rows.Scan(&shape.ID, &shape.Sequence, &shape.Lat, &shape.Lon); err != nil {
+			slog.Error("scanning exact shape coordinate row failed", "err", err)
+			return nil, err
+		}
+
+		mapKey := TargetShapeKey{ID: shape.ID, Sequence: shape.Sequence}
+		coordMap[mapKey] = shape
+	}
+
+	return coordMap, nil
+}

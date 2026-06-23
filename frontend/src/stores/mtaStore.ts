@@ -8,12 +8,15 @@ import {
   type TripAPI,
   type NextStopAPI,
   type NextStop,
+  type TrainLocation,
+  type TrainLocationAPI,
 } from '@/types/mta'
 import { useFetch } from '@/composables/api/useFetch'
 import { computed } from 'vue'
 import {
   normalizeNextStopFields,
   normalizeRouteFields,
+  normalizeTrainLocationFields,
   normalizeTripFields,
 } from '@/utils/normalizer'
 import { endpoints } from '@/api/endpoints'
@@ -51,13 +54,23 @@ export const useMtaStore = defineStore('mta', () => {
     fetchData: fetchNextStops,
   } = useFetch<NextStopAPI[], NextStop[]>((data) => data.map(normalizeNextStopFields))
 
+  const {
+    data: trainLocations,
+    loading: trainLocationsLoading,
+    error: trainLocationsError,
+    fetchData: fetchTrainLocations,
+  } = useFetch<TrainLocationAPI[], TrainLocation[]>((data) =>
+    data.map(normalizeTrainLocationFields),
+  )
+
   const load = async () => {
     await Promise.all([
       fetchStops(endpoints.mta.stops.getAll),
-      fetchShapes(endpoints.mta.shapes.getAllSimplified),
+      fetchShapes(endpoints.mta.shapes.getAll),
       fetchTrips(endpoints.mta.trips.getAllToday),
       fetchRoutes(endpoints.mta.routes.getAll),
-      fetchNextStops(endpoints.mta.routes.getAllNextStops),
+      // fetchNextStops(endpoints.mta.routes.getAllNextStops),
+      fetchTrainLocations(endpoints.mta.trips.getLocations),
     ])
   }
 
@@ -104,6 +117,7 @@ export const useMtaStore = defineStore('mta', () => {
     routes,
     trips,
     nextStops,
+    trainLocations,
     stopLocationLookup,
     stopsLoading,
     stopsError,
@@ -115,6 +129,8 @@ export const useMtaStore = defineStore('mta', () => {
     tripsError,
     nextStopsLoading,
     nextStopsError,
+    trainLocationsLoading,
+    trainLocationsError,
     load,
     getRouteColor,
   }
