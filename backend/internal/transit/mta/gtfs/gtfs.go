@@ -91,6 +91,7 @@ func RetrieveStaticGTFS(ctx context.Context, pool *pgxpool.Pool, gtfsURL string)
 	if err != nil {
 		slog.Error("transaction commit", "err", err)
 	}
+	slog.Info("finish static retrieval")
 }
 
 func createStagingTables(ctx context.Context, tx pgx.Tx) error {
@@ -233,6 +234,7 @@ func moveFromStaging(ctx context.Context, tx pgx.Tx) error {
 				, shape_id
 			FROM trips_staging;
 
+			-- Optimized: Fills static columns during data transfer
 			INSERT INTO times_new (
 				day_of_week
 				, short_trip_id
@@ -241,6 +243,8 @@ func moveFromStaging(ctx context.Context, tx pgx.Tx) error {
 				, arrival_time
 				, departure_time
 				, stop_sequence
+				, trip_suffix
+				, trip_base_prefix
 			)
 			SELECT
 				COALESCE(
@@ -256,6 +260,14 @@ func moveFromStaging(ctx context.Context, tx pgx.Tx) error {
 				, arrival_time
 				, departure_time
 				, stop_sequence
+				-- Calculates suffix (Everything after the first '_')
+				, SPLIT_PART(SUBSTRING(trip_id FROM POSITION('_' IN trip_id) + 1), '_', 2)
+				-- Fixed: Dynamic POSIX regex captures from the start up to '..N' or '..S'
+				-- If regex doesn't find a match, safely falls back to a clean text default
+				, COALESCE(
+					SUBSTRING(SPLIT_PART(SUBSTRING(trip_id FROM POSITION('_' IN trip_id) + 1), '_', 2) FROM '^.*?\.\.[NS]'),
+					SUBSTRING(SPLIT_PART(SUBSTRING(trip_id FROM POSITION('_' IN trip_id) + 1), '_', 2) FROM 1 FOR 4)
+				  )
 			FROM times_staging;
 
 			ALTER TABLE routes RENAME TO routes_old;

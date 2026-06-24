@@ -3,6 +3,7 @@ package jobs
 import (
 	"context"
 	"log/slog"
+	"sync"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -29,8 +30,30 @@ func RunStaticGTFSJob(ctx context.Context, pool *pgxpool.Pool, gtfsURL string) {
 	}
 }
 
-func RunRealTimeGTFSJob(ctx context.Context, rdb *redis.Client, mtaURL string) {
-	gtfs.FetchRealtimeFeed(ctx, rdb, mtaURL)
+func RunRealTimeGTFSJob(ctx context.Context, rdb *redis.Client, gtfsSSE *gtfs.SSE) {
+	gtfsRT := []string{
+		"https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-ace",
+		"https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-bdfm",
+		"https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-g",
+		"https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-jz",
+		"https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-nqrw",
+		"https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-l",
+		"https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs",
+		"https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-si",
+	}
+
+	var wg sync.WaitGroup
+	for _, feed := range gtfsRT {
+		wg.Add(1)
+
+		go func(feed string) {
+			defer wg.Done()
+			gtfs.FetchRealtimeFeed(ctx, rdb, feed)
+		}(feed)
+	}
+
+	wg.Wait()
+	gtfsSSE.TripChannel <- time.Now().String()
 
 	ticker := time.NewTicker(30 * time.Second)
 	defer ticker.Stop()
@@ -40,9 +63,20 @@ func RunRealTimeGTFSJob(ctx context.Context, rdb *redis.Client, mtaURL string) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			slog.Info("retrieving realtime gtfs retrieval job", "url", mtaURL)
+			slog.Info("retrieving realtime gtfs retrieval job")
 
-			gtfs.FetchRealtimeFeed(ctx, rdb, mtaURL)
+			var wg sync.WaitGroup
+			for _, feed := range gtfsRT {
+				wg.Add(1)
+
+				go func(feed string) {
+					defer wg.Done()
+					gtfs.FetchRealtimeFeed(ctx, rdb, feed)
+				}(feed)
+			}
+
+			wg.Wait()
+			gtfsSSE.TripChannel <- time.Now().String()
 		}
 	}
 }

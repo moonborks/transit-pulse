@@ -1,4 +1,4 @@
-package nextstop
+package nextstops
 
 import (
 	"context"
@@ -16,38 +16,33 @@ func NewNextStopRepo(rdb *redis.Client) *NextStopRepo {
 }
 
 func (rc *NextStopRepo) GetAllNextStops(ctx context.Context) ([]NextStop, error) {
-	iter := rc.rdb.Scan(ctx, 0, "*_*", 0).Iterator()
-
-	var keys []string
-
-	for iter.Next(ctx) {
-		keys = append(keys, iter.Val())
-	}
-
-	if err := iter.Err(); err != nil {
-		return []NextStop{}, err
-	}
-
-	vals, err := rc.rdb.MGet(ctx, keys...).Result()
+	keys, err := rc.rdb.Keys(ctx, "mta:active:stops:gtfs*").Result()
 	if err != nil {
 		return []NextStop{}, err
 	}
 
-	spots := make([]NextStop, 0, len(vals))
+	if len(keys) == 0 {
+		return []NextStop{}, nil
+	}
 
-	for _, v := range vals {
-		if v == nil {
-			continue
-		}
+	var allVals []string
 
-		var s NextStop
-		err := json.Unmarshal([]byte(v.(string)), &s)
+	for _, key := range keys {
+		vals, err := rc.rdb.HVals(ctx, key).Result()
 		if err != nil {
 			continue
 		}
-
-		spots = append(spots, s)
+		allVals = append(allVals, vals...)
 	}
 
-	return spots, nil
+	stops := make([]NextStop, 0, len(allVals))
+	for _, v := range allVals {
+		var s NextStop
+		if err := json.Unmarshal([]byte(v), &s); err != nil {
+			continue
+		}
+		stops = append(stops, s)
+	}
+
+	return stops, nil
 }

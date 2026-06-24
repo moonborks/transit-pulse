@@ -6,15 +6,17 @@ import (
 
 	"github.com/go-chi/chi"
 
+	"github.com/moonborks/transit-pulse/internal/transit/mta/gtfs"
 	"github.com/moonborks/transit-pulse/internal/web"
 )
 
 type TripHandler struct {
 	tripService *TripService
+	gtfsSSE     *gtfs.SSE
 }
 
-func NewTripHandler(ts *TripService) *TripHandler {
-	return &TripHandler{tripService: ts}
+func NewTripHandler(ts *TripService, gs *gtfs.SSE) *TripHandler {
+	return &TripHandler{tripService: ts, gtfsSSE: gs}
 }
 
 func TripRoutes(h *TripHandler) http.Handler {
@@ -22,6 +24,8 @@ func TripRoutes(h *TripHandler) http.Handler {
 	r.Get("/", h.GetAll)
 	r.Get("/{id}", h.GetTrip)
 	r.Get("/today", h.GetTripsForToday)
+	r.Get("/positions", h.GetTripPositions)
+	r.Get("/messages", h.gtfsSSE.TripEvents)
 	return r
 }
 
@@ -73,6 +77,22 @@ func (h *TripHandler) GetTripsForToday(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := web.WriteJson(w, http.StatusOK, trips); err != nil {
+		slog.Error("writing response json")
+	}
+}
+
+func (h *TripHandler) GetTripPositions(w http.ResponseWriter, r *http.Request) {
+	tripLocations, err := h.tripService.GetTripPositions(r.Context())
+	if err != nil {
+		web.WriteError(
+			w,
+			http.StatusInternalServerError,
+			"INTERNAL_ERROR",
+			"unable to retrieve trips",
+		)
+		return
+	}
+	if err := web.WriteJson(w, http.StatusOK, tripLocations); err != nil {
 		slog.Error("writing response json")
 	}
 }

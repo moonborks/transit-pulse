@@ -6,14 +6,14 @@ import {
   type Trip,
   type RouteAPI,
   type TripAPI,
-  type NextStopAPI,
-  type NextStop,
+  type TrainLocation,
+  type TrainLocationAPI,
 } from '@/types/mta'
 import { useFetch } from '@/composables/api/useFetch'
 import { computed } from 'vue'
 import {
-  normalizeNextStopFields,
   normalizeRouteFields,
+  normalizeTrainLocationFields,
   normalizeTripFields,
 } from '@/utils/normalizer'
 import { endpoints } from '@/api/endpoints'
@@ -45,19 +45,22 @@ export const useMtaStore = defineStore('mta', () => {
   } = useFetch<RouteAPI[], Route[]>((data) => data.map(normalizeRouteFields))
 
   const {
-    data: nextStops,
-    loading: nextStopsLoading,
-    error: nextStopsError,
-    fetchData: fetchNextStops,
-  } = useFetch<NextStopAPI[], NextStop[]>((data) => data.map(normalizeNextStopFields))
+    data: trainLocations,
+    loading: trainLocationsLoading,
+    error: trainLocationsError,
+    fetchData: fetchTrainLocations,
+  } = useFetch<TrainLocationAPI[], TrainLocation[]>((data) =>
+    data.map(normalizeTrainLocationFields),
+  )
 
   const load = async () => {
     await Promise.all([
       fetchStops(endpoints.mta.stops.getAll),
       fetchShapes(endpoints.mta.shapes.getAll),
-      fetchTrips(endpoints.mta.trips.getAll),
+      fetchTrips(endpoints.mta.trips.getAllToday),
       fetchRoutes(endpoints.mta.routes.getAll),
-      fetchNextStops(endpoints.mta.routes.getAllNextStops),
+      // fetchNextStops(endpoints.mta.routes.getAllNextStops),
+      fetchTrainLocations(endpoints.mta.trips.getLocations),
     ])
   }
 
@@ -76,20 +79,6 @@ export const useMtaStore = defineStore('mta', () => {
       grouped[p.id] = pts
     }
     return grouped
-  }
-
-  const shapeColorMap = computed(() => {
-    const map = new Map<string, string>()
-    for (const trip of trips.value ?? []) {
-      if (!trip.shapeId) continue
-      const route = routes.value?.find((r) => r.id === trip.routeId)
-      map.set(trip.shapeId, route ? `#${route.color}` : '#888888')
-    }
-    return map
-  })
-
-  function getShapeColor(shapeId: string): string {
-    return shapeColorMap.value.get(shapeId) ?? '#888888'
   }
 
   const routeColorMap = computed(() => {
@@ -117,7 +106,7 @@ export const useMtaStore = defineStore('mta', () => {
     groupedShapes,
     routes,
     trips,
-    nextStops,
+    trainLocations,
     stopLocationLookup,
     stopsLoading,
     stopsError,
@@ -127,10 +116,10 @@ export const useMtaStore = defineStore('mta', () => {
     routesError,
     tripsLoading,
     tripsError,
-    nextStopsLoading,
-    nextStopsError,
+    trainLocationsLoading,
+    trainLocationsError,
     load,
-    getShapeColor,
     getRouteColor,
+    fetchTrainLocations,
   }
 })

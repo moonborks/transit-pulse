@@ -1,13 +1,22 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref } from 'vue'
+import { onMounted, onUnmounted, ref, watch } from 'vue'
 import maplibregl from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import { useMtaStore } from './stores/mtaStore'
-import type { Trip } from './types/mta'
+import type { TrainLocation, Trip } from './types/mta'
+import { useTripSSE } from './composables/api/useSSE'
+import { endpoints } from './api/endpoints'
 
 const mtaStore = useMtaStore()
 const mapEl = ref<HTMLDivElement | null>(null)
 let map: maplibregl.Map | null = null
+
+const { tripEvent } = useTripSSE()
+watch(tripEvent, async () => {
+  console.log('update train location triggered via golang SSE event')
+  await mtaStore.fetchTrainLocations(endpoints.mta.trips.getLocations)
+  updateTrainLocationsOnMap(map!, mtaStore.trainLocations ?? [])
+})
 
 const initMap = (el: HTMLDivElement): maplibregl.Map => {
   return new maplibregl.Map({
@@ -39,82 +48,111 @@ function getEndpointKey(points: [number, number][]): string {
   return `${start[0]},${start[1]}|${end[0]},${end[1]}`
 }
 
-function buildRouteOffsets(trips: Trip[]): Map<string, number> {
-  const headsignGroups = new Map<string, Set<string>>()
+function buildShapeOffsets(
+  trips: Trip[],
+  groupedShapes: Record<string, [number, number][]>,
+): Map<string, number> {
+  const routeShapesMap = new Map<string, Set<string>>()
   for (const trip of trips) {
-    if (!trip.headsign || isExpressOrZ(trip.routeId)) continue
-    if (!headsignGroups.has(trip.headsign)) {
-      headsignGroups.set(trip.headsign, new Set())
+    if (!trip.shapeId || !isNorthbound(trip.shapeId) || isExpressOrZ(trip.routeId)) continue
+    if (!routeShapesMap.has(trip.routeId)) {
+      routeShapesMap.set(trip.routeId, new Set())
     }
-    headsignGroups.get(trip.headsign)!.add(trip.routeId)
+    routeShapesMap.get(trip.routeId)!.add(trip.shapeId)
   }
-  const sortedGroups = [...headsignGroups.entries()].sort((a, b) => {
-    if (b[1].size !== a[1].size) return b[1].size - a[1].size
-    return a[0].localeCompare(b[0])
-  })
-  const offsetByRoute = new Map<string, number>()
-  const step = 4
-  const base = 2
+
+  const offsetByShape = new Map<string, number>()
+
+  const globalCoordinateOffsets = new Map<string, Set<number>>()
+
+  const step = 5
+  const base = 3
+
   function offsetForSlot(slot: number, step: number, base: number): number {
-    const magnitude = Math.floor(slot / 2) * step + base
-    return slot % 2 === 0 ? magnitude : -magnitude
+    const group = Math.floor(slot / 4)
+    const withinGroup = slot % 4
+    const isPositive = withinGroup < 2
+
+    const stepMultiplier = group * 2 + (withinGroup % 2)
+    const magnitude = stepMultiplier * step + base
+
+    return isPositive ? magnitude : -magnitude
   }
-  function slotFromOffset(offset: number, step: number, base: number): number {
-    const group = (Math.abs(offset) - base) / step
-    return group * 2 + (offset < 0 ? 1 : 0)
-  }
-  for (const [, routes] of sortedGroups) {
-    const usedOffsets = new Set<number>()
 
-    let maxSlot = -1
+  for (const [, shapeIds] of routeShapesMap) {
+    const routeCoordinateKeys: string[] = []
 
-    for (const routeId of routes) {
-      const existing = offsetByRoute.get(routeId)
-      if (existing === undefined) continue
+    for (const shapeId of shapeIds) {
+      const points = groupedShapes[shapeId]
+      if (!points || points.length === 0) continue
 
-      const slot = slotFromOffset(existing, step, base)
+      // Look at the first 5 track points to evaluate the local terminal corridor space
+      const pointsToAnalyze = points.slice(0, 5)
+      for (const [lon, lat] of pointsToAnalyze) {
+        routeCoordinateKeys.push(`${lat.toFixed(4)},${lon.toFixed(4)}`)
+      }
 
-      if (!Number.isNaN(slot)) {
-        maxSlot = Math.max(maxSlot, slot)
+      if (points.length > 5) {
+        const endPoints = points.slice(-5)
+        for (const [lon, lat] of endPoints) {
+          routeCoordinateKeys.push(`${lat.toFixed(4)},${lon.toFixed(4)}`)
+        }
       }
     }
 
-    let slot = maxSlot + 1
+    let slot = 0
+    let candidate = offsetForSlot(slot, step, base)
+    let hasCollision = true
 
-    for (const routeId of routes) {
-      const existing = offsetByRoute.get(routeId)
-      if (existing !== undefined) usedOffsets.add(existing)
-    }
+    // Scan the global path ledger for track path conflicts
+    while (hasCollision) {
+      hasCollision = false
 
-    for (const routeId of routes) {
-      if (offsetByRoute.has(routeId)) continue
+      // If ANY of our line's initial coordinates overlap with a lane slot already claimed
+      // by a different route, we must increment the slot lane globally.
+      for (const key of routeCoordinateKeys) {
+        if (globalCoordinateOffsets.get(key)?.has(candidate)) {
+          hasCollision = true
+          break
+        }
+      }
 
-      let candidate = offsetForSlot(slot, step, base)
-      while (usedOffsets.has(candidate)) {
+      if (hasCollision) {
         slot++
         candidate = offsetForSlot(slot, step, base)
       }
-      offsetByRoute.set(routeId, candidate)
-      usedOffsets.add(candidate)
-      slot++
+    }
+
+    for (const shapeId of shapeIds) {
+      offsetByShape.set(shapeId, candidate)
+    }
+
+    // Record this route path's coordinates to block other trains from taking this lane
+    for (const key of routeCoordinateKeys) {
+      if (!globalCoordinateOffsets.has(key)) {
+        globalCoordinateOffsets.set(key, new Set())
+      }
+      globalCoordinateOffsets.get(key)!.add(candidate)
     }
   }
 
-  return offsetByRoute
+  return offsetByShape
 }
 
 const addRoutes = (map: maplibregl.Map) => {
   const trips = mtaStore.trips ?? []
-  const routeOffsets = buildRouteOffsets(trips)
+  const groupedShapes = mtaStore.groupedShapes ?? {}
+
+  const shapeOffsets = buildShapeOffsets(trips, groupedShapes)
+
   const routeShapesMap = new Map<string, Set<string>>()
   const seenEndpoints = new Map<string, Set<string>>()
 
-  for (const trip of mtaStore.trips ?? []) {
+  for (const trip of trips) {
     if (!trip.shapeId) continue
-
     if (!isNorthbound(trip.shapeId) || isExpressOrZ(trip.routeId)) continue
 
-    const points = mtaStore.groupedShapes[trip.shapeId]
+    const points = groupedShapes[trip.shapeId]
     if (!points || points.length === 0) continue
 
     const endpointKey = getEndpointKey(points)
@@ -139,14 +177,18 @@ const addRoutes = (map: maplibregl.Map) => {
   }> = []
 
   for (const [routeId, shapeIds] of routeShapesMap) {
-    if (!routeOffsets.has(routeId)) continue
-    const offset = routeOffsets.get(routeId) ?? 0
     for (const shapeId of shapeIds) {
-      const points = mtaStore.groupedShapes[shapeId]
+      const points = groupedShapes[shapeId]
       if (!points) continue
+
+      const offset = shapeOffsets.get(shapeId) ?? 0
+
       features.push({
         type: 'Feature',
-        properties: { color: mtaStore.getShapeColor(shapeId), offset },
+        properties: {
+          color: mtaStore.getRouteColor(routeId),
+          offset,
+        },
         geometry: {
           type: 'LineString',
           coordinates: points,
@@ -165,7 +207,7 @@ const addRoutes = (map: maplibregl.Map) => {
     type: 'line',
     source: 'shapes',
     layout: {
-      'line-join': 'round', // Smooths the sharp elbow corners
+      'line-join': 'round',
       'line-cap': 'round',
     },
     paint: {
@@ -232,76 +274,140 @@ const addStops = (map: maplibregl.Map) => {
   })
 }
 
-const addTrainLocations = (map: maplibregl.Map) => {
-  const lookup = mtaStore.stopLocationLookup
+function addArrowIcon(map: maplibregl.Map) {
+  const size = 20
+  const canvas = document.createElement('canvas')
+  canvas.width = size
+  canvas.height = size
+  const ctx = canvas.getContext('2d')!
 
-  const features: Array<{
-    type: 'Feature'
-    geometry: { type: 'Point'; coordinates: [number, number] }
-    properties: {
-      stopId: string
-      routeId: string
-      color: string
-      priority: number
-    }
-  }> = []
-  let priority = 1
+  // Wider arrowhead: tip near top, base spans almost full width,
+  // and the base sits higher up (shorter height) so it reads as "wide" not "tall"
+  ctx.beginPath()
+  ctx.moveTo(size / 2, size * 0.1) // tip (near top)
+  ctx.lineTo(size * 0.95, size * 0.85) // bottom-right corner, pulled out wide
+  ctx.lineTo(size / 2, size * 0.6) // notch (inward point for arrowhead look)
+  ctx.lineTo(size * 0.05, size * 0.85) // bottom-left corner, pulled out wide
+  ctx.closePath()
+  ctx.fillStyle = '#ffffff'
+  ctx.fill()
 
-  for (const nextStop of mtaStore.nextStops ?? []) {
-    if (nextStop.routeId === 'FS') {
-      console.log(lookup.get(nextStop.stopId))
-    }
-    const stopLocation = lookup.get(nextStop.stopId)
-    if (stopLocation === undefined) continue
-    features.push({
-      type: 'Feature',
-      geometry: { type: 'Point', coordinates: [stopLocation.lon, stopLocation.lat] },
-      properties: {
-        stopId: nextStop.stopId,
-        routeId: nextStop.routeId,
-        color: mtaStore.getRouteColor(nextStop.routeId),
-        priority: priority++,
-      },
-    })
-  }
-  map.addSource('next-stops', {
-    type: 'geojson',
-    data: {
-      type: 'FeatureCollection',
-      features,
+  map.addImage(
+    'train-arrow',
+    {
+      width: size,
+      height: size,
+      data: ctx.getImageData(0, 0, size, size).data,
     },
+    { sdf: true },
+  )
+}
+
+const initTrainTrackingLayers = (map: maplibregl.Map) => {
+  map.addSource('train-locations', {
+    type: 'geojson',
+    data: { type: 'FeatureCollection', features: [] },
   })
+
   map.addLayer({
-    id: 'next-stops-circles',
+    id: 'train-circles',
     type: 'circle',
-    source: 'next-stops',
-    minzoom: 11,
+    source: 'train-locations',
+    minzoom: 10,
     layout: {
-      'circle-sort-key': ['get', 'priority'],
+      // High value renders last (on top)
+      'circle-sort-key': ['get', 'circle_priority'],
     },
     paint: {
-      'circle-radius': 8,
+      'circle-radius': 11,
       'circle-color': ['get', 'color'],
-      'circle-stroke-width': 1.5,
+      'circle-stroke-width': 2,
       'circle-stroke-color': '#000000',
     },
   })
 
+  addArrowIcon(map)
+
+  const CIRCLE_RADIUS = 11
+  const ARROW_HALF_HEIGHT = 8
+  const GAP = 8
+
   map.addLayer({
-    id: 'next-stops-labels',
+    id: 'train-arrows',
     type: 'symbol',
-    source: 'next-stops',
-    minzoom: 11,
+    source: 'train-locations',
+    minzoom: 13,
+    layout: {
+      'icon-image': 'train-arrow',
+      'icon-size': 1,
+      'icon-rotate': ['get', 'bearing'],
+      'icon-rotation-alignment': 'map',
+      'icon-allow-overlap': true,
+      'icon-ignore-placement': true,
+      'icon-offset': [0, -(CIRCLE_RADIUS + GAP - ARROW_HALF_HEIGHT)],
+      'symbol-sort-key': ['get', 'circle_priority'],
+    },
+    paint: {
+      'icon-color': ['get', 'color'],
+    },
+  })
+
+  map.addLayer({
+    id: 'train-labels',
+    type: 'symbol',
+    source: 'train-locations',
+    minzoom: 10,
     layout: {
       'text-field': ['get', 'routeId'],
       'text-font': ['Open Sans Bold'],
-      'text-size': 12,
+      'text-size': 11,
       'text-allow-overlap': false,
-      'symbol-sort-key': ['get', 'priority'],
+      'text-ignore-placement': false,
+      'text-padding': 2,
+      // Low value processes first (wins the text space)
+      'symbol-sort-key': ['get', 'label_priority'],
     },
     paint: {
       'text-color': '#ffffff',
     },
+  })
+}
+
+const updateTrainLocationsOnMap = (map: maplibregl.Map, trainLocations: TrainLocation[]) => {
+  const source = map.getSource('train-locations') as maplibregl.GeoJSONSource
+  if (!source) return
+
+  const total = trainLocations.length
+
+  const features = trainLocations.map((train, index) => {
+    // Top train (end of array) gets high circle priority to render on top
+    const circlePriority = index + 1
+
+    // Top train (end of array) gets low label priority (1) to win the text slot
+    const labelPriority = total - index
+
+    return {
+      type: 'Feature' as const,
+      id: `${train.tripId}_${train.nextStopId}`,
+      geometry: {
+        type: 'Point' as const,
+        coordinates: [train.lon, train.lat] as [number, number],
+      },
+      properties: {
+        tripId: train.tripId,
+        routeId: train.routeId,
+        nextStopId: train.nextStopId,
+        bearing: train.bearing,
+        color: mtaStore.getRouteColor(train.routeId),
+        circle_priority: circlePriority,
+        label_priority: labelPriority,
+      },
+    }
+  })
+
+  source.setData({
+    type: 'FeatureCollection',
+    features,
   })
 }
 
@@ -313,7 +419,8 @@ onMounted(async () => {
   map.on('load', () => {
     addRoutes(map!)
     addStops(map!)
-    addTrainLocations(map!)
+    initTrainTrackingLayers(map!)
+    updateTrainLocationsOnMap(map!, mtaStore.trainLocations ?? [])
   })
 })
 

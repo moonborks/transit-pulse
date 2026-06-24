@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
@@ -12,26 +13,13 @@ import (
 	"github.com/moonborks/transit-pulse/internal/database"
 	"github.com/moonborks/transit-pulse/internal/jobs"
 	"github.com/moonborks/transit-pulse/internal/server"
-	nextstop "github.com/moonborks/transit-pulse/internal/transit/mta/nextstops"
+	"github.com/moonborks/transit-pulse/internal/transit/mta/gtfs"
+	"github.com/moonborks/transit-pulse/internal/transit/mta/nextstops"
 	"github.com/moonborks/transit-pulse/internal/transit/mta/routes"
 	"github.com/moonborks/transit-pulse/internal/transit/mta/shapes"
 	"github.com/moonborks/transit-pulse/internal/transit/mta/stops"
 	"github.com/moonborks/transit-pulse/internal/transit/mta/times"
 	"github.com/moonborks/transit-pulse/internal/transit/mta/trips"
-)
-
-var (
-	mtaGTFS = "https://rrgtfsfeeds.s3.amazonaws.com/gtfs_supplemented.zip"
-	gtfsRT  = []string{
-		"https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-ace",
-		"https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-bdfm",
-		"https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-g",
-		"https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-jz",
-		"https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-nqrw",
-		"https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-l",
-		"https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs",
-		"https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-si",
-	}
 )
 
 type App struct {
@@ -57,7 +45,9 @@ func NewApp() *App {
 	if err != nil {
 		slog.Error("Parse database config:", "err", err)
 	}
-	config.MinConns = 5
+	config.MaxConnIdleTime = time.Minute * 3
+	config.MaxConns = 50
+	config.MinConns = 20
 
 	db, err := pgxpool.NewWithConfig(ctx, config)
 	if err != nil {
@@ -81,28 +71,30 @@ func NewApp() *App {
 		DB:       0,
 	})
 
+	gtfsSSEChannel := make(chan string, 5)
+	gtfsSSE := gtfs.NewSSEChannel(gtfsSSEChannel)
+
+	mtaGTFS := "https://rrgtfsfeeds.s3.amazonaws.com/gtfs_supplemented.zip"
 	go jobs.RunStaticGTFSJob(ctx, db, mtaGTFS)
-	for _, rtFeed := range gtfsRT {
-		go jobs.RunRealTimeGTFSJob(ctx, rdb, rtFeed)
-	}
+	go jobs.RunRealTimeGTFSJob(ctx, rdb, gtfsSSE)
 
 	routeRepo := routes.NewRouteRepo(db)
 	shapeRepo := shapes.NewShapeRepo(db)
 	stopRepo := stops.NewStopRepo(db)
 	tripRepo := trips.NewTripRepo(db)
 	timeRepo := times.NewTimeRepo(db, rdb)
-	nextStopRepo := nextstop.NewNextStopRepo(rdb)
+	nextStopRepo := nextstops.NewNextStopRepo(rdb)
 
 	routeService := routes.NewRouteService(routeRepo)
 	shapeService := shapes.NewShapeService(shapeRepo)
 	stopService := stops.NewStopService(stopRepo, nextStopRepo)
-	tripService := trips.NewTripService(tripRepo)
+	tripService := trips.NewTripService(tripRepo, nextStopRepo, shapeRepo)
 	timeService := times.NewTimeService(timeRepo)
 
 	routeHandler := routes.NewRouteHandler(routeService, stopService)
 	shapeHandler := shapes.NewShapeHandler(shapeService)
 	stopHandler := stops.NewStopHandler(stopService)
-	tripHandler := trips.NewTripHandler(tripService)
+	tripHandler := trips.NewTripHandler(tripService, gtfsSSE)
 	timeHandler := times.NewTimeHandler(timeService)
 
 	handlers := server.Handlers{

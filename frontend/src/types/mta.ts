@@ -53,3 +53,21 @@ export interface NextStop {
   routeId: string
   arrivalTime: string
 }
+
+export interface TrainLocationAPI {
+  trip_id: string
+  route_id: string
+  lat: number
+  lon: number
+  bearing: number
+  next_stop_id: string
+}
+
+export interface TrainLocation {
+  tripId: string
+  routeId: string
+  lat: number
+  lon: number
+  bearing: number
+  nextStopId: string
+}
