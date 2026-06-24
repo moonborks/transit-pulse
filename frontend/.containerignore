@@ -1,0 +1,46 @@
+# Git
+.git
+.gitignore
+
+# IDEs
+.vscode
+.idea
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Coverage & test output
+coverage.out
+coverage.html
+*.test
+
+# Local environment
+.env
+.env.*
+
+# Temporary files
+tmp/
+tmp/**
+*.log
+
+# Vendor (if you don't use vendoring)
+vendor/
+
+# Frontend dependencies (recreated by npm/pnpm/yarn)
+node_modules/
+.pnpm-store/
+.npm/
+
+# Frontend build outputs
+dist/
+.output/
+.nuxt/
+
+# Frontend Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Docker/Podman artifacts
+Containerfile
