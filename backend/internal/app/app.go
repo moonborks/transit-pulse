@@ -13,26 +13,13 @@ import (
 	"github.com/moonborks/transit-pulse/internal/database"
 	"github.com/moonborks/transit-pulse/internal/jobs"
 	"github.com/moonborks/transit-pulse/internal/server"
+	"github.com/moonborks/transit-pulse/internal/transit/mta/gtfs"
 	"github.com/moonborks/transit-pulse/internal/transit/mta/nextstops"
 	"github.com/moonborks/transit-pulse/internal/transit/mta/routes"
 	"github.com/moonborks/transit-pulse/internal/transit/mta/shapes"
 	"github.com/moonborks/transit-pulse/internal/transit/mta/stops"
 	"github.com/moonborks/transit-pulse/internal/transit/mta/times"
 	"github.com/moonborks/transit-pulse/internal/transit/mta/trips"
-)
-
-var (
-	mtaGTFS = "https://rrgtfsfeeds.s3.amazonaws.com/gtfs_supplemented.zip"
-	gtfsRT  = []string{
-		"https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-ace",
-		"https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-bdfm",
-		"https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-g",
-		"https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-jz",
-		"https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-nqrw",
-		"https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-l",
-		"https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs",
-		"https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-si",
-	}
 )
 
 type App struct {
@@ -84,10 +71,12 @@ func NewApp() *App {
 		DB:       0,
 	})
 
+	gtfsSSEChannel := make(chan string, 5)
+	gtfsSSE := gtfs.NewSSEChannel(gtfsSSEChannel)
+
+	mtaGTFS := "https://rrgtfsfeeds.s3.amazonaws.com/gtfs_supplemented.zip"
 	go jobs.RunStaticGTFSJob(ctx, db, mtaGTFS)
-	for _, rtFeed := range gtfsRT {
-		go jobs.RunRealTimeGTFSJob(ctx, rdb, rtFeed)
-	}
+	go jobs.RunRealTimeGTFSJob(ctx, rdb, gtfsSSE)
 
 	routeRepo := routes.NewRouteRepo(db)
 	shapeRepo := shapes.NewShapeRepo(db)
@@ -96,19 +85,16 @@ func NewApp() *App {
 	timeRepo := times.NewTimeRepo(db, rdb)
 	nextStopRepo := nextstops.NewNextStopRepo(rdb)
 
-	tripSSEChannel := make(chan string, 5)
-	tripSSE := trips.NewSSEChannel(tripSSEChannel)
-
 	routeService := routes.NewRouteService(routeRepo)
 	shapeService := shapes.NewShapeService(shapeRepo)
 	stopService := stops.NewStopService(stopRepo, nextStopRepo)
-	tripService := trips.NewTripService(tripRepo, tripSSE, nextStopRepo, shapeRepo)
+	tripService := trips.NewTripService(tripRepo, nextStopRepo, shapeRepo)
 	timeService := times.NewTimeService(timeRepo)
 
 	routeHandler := routes.NewRouteHandler(routeService, stopService)
 	shapeHandler := shapes.NewShapeHandler(shapeService)
 	stopHandler := stops.NewStopHandler(stopService)
-	tripHandler := trips.NewTripHandler(tripService)
+	tripHandler := trips.NewTripHandler(tripService, gtfsSSE)
 	timeHandler := times.NewTimeHandler(timeService)
 
 	handlers := server.Handlers{
