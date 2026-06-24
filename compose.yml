@@ -2,14 +2,25 @@ services:
   valkey:
     container_name: valkey
     image: valkey/valkey:latest
+    healthcheck:
+      test: ["CMD", "valkey-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
 
   postgres:
     container_name: postgres
     image: postgres:latest
     shm_size: 128mb
     environment:
+      POSTGRES_DB: db
       POSTGRES_USER: user
       POSTGRES_PASSWORD: pass
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U user -d db"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
 
   backend:
     build:
@@ -20,8 +31,13 @@ services:
     image: transit-pulse/backend:latest
     environment:
       APP_ENV: production
-      DATABASE_URL: postgres://user:pass@postgres:5432/dev?sslmode=disable
+      DATABASE_URL: postgres://user:pass@postgres:5432/db?sslmode=disable
       VALKEY_URL: valkey:6379
+    depends_on:
+      valkey:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
 
   frontend:
     build:
@@ -30,5 +46,9 @@ services:
       target: final
     container_name: transit-pulse_frontend
     image: transit-pulse/frontend:latest
+    depends_on:
+      - backend
     ports:
       - 8080:80
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:r
