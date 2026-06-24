@@ -210,9 +210,6 @@ func (s *TripService) GetTripPositions(ctx context.Context) ([]TripTrainLocation
 
 	slog.Info("GetTripPositions execution complete", "final_payload_count", len(trainLocations))
 
-	msg := time.Now().String()
-	s.tripSSE.tripChannel <- msg
-
 	return trainLocations, nil
 }
 

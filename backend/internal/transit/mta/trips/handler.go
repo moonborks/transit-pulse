@@ -6,15 +6,17 @@ import (
 
 	"github.com/go-chi/chi"
 
+	"github.com/moonborks/transit-pulse/internal/transit/mta/gtfs"
 	"github.com/moonborks/transit-pulse/internal/web"
 )
 
 type TripHandler struct {
 	tripService *TripService
+	gtfsSSE     *gtfs.SSE
 }
 
-func NewTripHandler(ts *TripService) *TripHandler {
-	return &TripHandler{tripService: ts}
+func NewTripHandler(ts *TripService, gs *gtfs.SSE) *TripHandler {
+	return &TripHandler{tripService: ts, gtfsSSE: gs}
 }
 
 func TripRoutes(h *TripHandler) http.Handler {
@@ -23,7 +25,7 @@ func TripRoutes(h *TripHandler) http.Handler {
 	r.Get("/{id}", h.GetTrip)
 	r.Get("/today", h.GetTripsForToday)
 	r.Get("/positions", h.GetTripPositions)
-	r.Get("/messages", h.tripService.tripSSE.TripEvents)
+	r.Get("/messages", h.gtfsSSE.TripEvents)
 	return r
 }
 

@@ -16,7 +16,11 @@ import (
 	pb "github.com/moonborks/transit-pulse/internal/transit/mta/gtfs/proto"
 )
 
-func FetchRealtimeFeed(ctx context.Context, rdb *redis.Client, feedLink string) {
+func FetchRealtimeFeed(
+	ctx context.Context,
+	rdb *redis.Client,
+	feedLink string,
+) {
 	resp, err := http.Get(feedLink)
 	if err != nil {
 		slog.Error("retrieving gtfs-rt data from mta endpoint", "err", err)
@@ -47,7 +51,12 @@ type Train struct {
 	ArrivalTime time.Time `json:"arrival_time"`
 }
 
-func writeProtoMsgToCache(ctx context.Context, rdb *redis.Client, feed *pb.FeedMessage, feedLink string) error {
+func writeProtoMsgToCache(
+	ctx context.Context,
+	rdb *redis.Client,
+	feed *pb.FeedMessage,
+	feedLink string,
+) error {
 	pipe := rdb.Pipeline()
 
 	unquotedLink, err := url.PathUnescape(feedLink)
