@@ -409,7 +409,8 @@ func (r *TripRepo) GetShapeSequences(ctx context.Context, contexts []TrainContex
 		case strings.HasPrefix(rawShapeID, "SI.S"):
 			shapeIDs[i] = "SI..S03R"
 		default:
-			shapeIDs[i] = rawShapeID
+			suffixRegex := regexp.MustCompile(`([NS]\d+)X.*`)
+			shapeIDs[i] = suffixRegex.ReplaceAllString(rawShapeID, "$1")
 		}
 	}
 
@@ -510,7 +511,8 @@ func (r *TripRepo) GetCoordinatesByShapeSequence(ctx context.Context, contexts [
 		case strings.HasPrefix(rawShapeID, "SI.S"):
 			shapeIDs[i] = "SI..S03R"
 		default:
-			shapeIDs[i] = rawShapeID
+			suffixRegex := regexp.MustCompile(`([NS]\d+)X.*`)
+			shapeIDs[i] = suffixRegex.ReplaceAllString(rawShapeID, "$1")
 		}
 	}
 
@@ -587,10 +589,7 @@ func (r *TripRepo) GetPositionsWithHistory(ctx context.Context, contexts []Train
 			normalizedShapeID = suffixRegex.ReplaceAllString(rawShapeID, "$1")
 		}
 
-		prevSeq := int32(c.CurrentShapeSequence - 1)
-		if prevSeq < 1 {
-			prevSeq = 1
-		}
+		prevSeq := max(int32(c.CurrentShapeSequence-1), 1)
 
 		shortTripIDs = append(shortTripIDs, c.ShortTripID)
 		nextStopIDs = append(nextStopIDs, c.NextStopID)

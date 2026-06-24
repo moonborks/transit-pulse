@@ -292,36 +292,17 @@ func buildTrainContexts(
 	tripStopKeyToPrevStopInfoMap map[TripStopKey]PrevStopInfo,
 	now time.Time,
 ) []TrainContext {
-	const debugRouteID = "SI"
-
-	var debugRouteInputCount int
-	for _, ns := range nextStops {
-		if ns.RouteID == debugRouteID {
-			debugRouteInputCount++
-		}
-	}
-	slog.Info(
-		"🔍 [buildTrainContexts] START",
-		"total_next_stops_received", len(nextStops),
-		"debug_route", debugRouteID,
-		"debug_route_in_input", debugRouteInputCount,
-	)
-
 	trainContexts := make([]TrainContext, 0, len(nextStops))
 
-	var droppedNoPrevInfo int
-	var droppedTimeParse int
-
 	for _, nextStop := range nextStops {
-		isDebugRoute := nextStop.RouteID == debugRouteID
 
 		lookupKey := TripStopKey{
 			ShortTripID: nextStop.ShortTripID,
 			StopID:      nextStop.StopID,
 		}
 		nextSequence, hasSequence := tripStopKeySequenceMap[lookupKey]
-		if !hasSequence && isDebugRoute {
-			slog.Debug("❌ debug route missing from tripStopKeySequenceMap",
+		if !hasSequence {
+			slog.Debug("❌ missing from tripStopKeySequenceMap",
 				"route_id", nextStop.RouteID,
 				"short_trip_id", nextStop.ShortTripID,
 				"stop_id", nextStop.StopID,
@@ -335,28 +316,17 @@ func buildTrainContexts(
 
 		prevInfo, found := tripStopKeyToPrevStopInfoMap[prevLookupKey]
 		if !found {
-			if isDebugRoute {
-				droppedNoPrevInfo++
-				slog.Debug("❌ debug route dropped: no prevInfo",
-					"route_id", nextStop.RouteID,
-					"short_trip_id", nextStop.ShortTripID,
-					"stop_id", nextStop.StopID,
-				)
-			}
+			slog.Debug("❌ no prevInfo",
+				"route_id", nextStop.RouteID,
+				"short_trip_id", nextStop.ShortTripID,
+				"stop_id", nextStop.StopID,
+			)
 			continue
 		}
 
 		parsedArrivalTime, err := time.Parse(time.RFC3339, nextStop.ArrivalTime)
 		if err != nil {
 			slog.Error("failed to parse arrival time string", "err", err, "val", nextStop.ArrivalTime)
-			if isDebugRoute {
-				droppedTimeParse++
-				slog.Debug("❌ debug route dropped: time parse failure",
-					"route_id", nextStop.RouteID,
-					"short_trip_id", nextStop.ShortTripID,
-					"arrival_time_raw", nextStop.ArrivalTime,
-				)
-			}
 			continue
 		}
 
@@ -392,22 +362,6 @@ func buildTrainContexts(
 
 		trainContexts = append(trainContexts, ctxRecord)
 	}
-
-	var debugRouteFinalCount int
-	for _, tc := range trainContexts {
-		if tc.RouteID == debugRouteID {
-			debugRouteFinalCount++
-		}
-	}
-
-	slog.Info(
-		"🔍 [buildTrainContexts] END SUMMARY",
-		"compiled_contexts_total", len(trainContexts),
-		"debug_route", debugRouteID,
-		"debug_route_compiled", debugRouteFinalCount,
-		"debug_route_dropped_no_prev_info", droppedNoPrevInfo,
-		"debug_route_dropped_time_parse_fail", droppedTimeParse,
-	)
 
 	return trainContexts
 }
