@@ -265,76 +265,6 @@ const addStops = (map: maplibregl.Map) => {
   })
 }
 
-// const addTrainLocations = (map: maplibregl.Map) => {
-//   const lookup = mtaStore.stopLocationLookup
-
-//   const features: Array<{
-//     type: 'Feature'
-//     geometry: { type: 'Point'; coordinates: [number, number] }
-//     properties: {
-//       stopId: string
-//       routeId: string
-//       color: string
-//       priority: number
-//     }
-//   }> = []
-//   let priority = 1
-
-//   for (const nextStop of mtaStore.nextStops ?? []) {
-//     const stopLocation = lookup.get(nextStop.stopId)
-//     if (stopLocation === undefined) continue
-//     features.push({
-//       type: 'Feature',
-//       geometry: { type: 'Point', coordinates: [stopLocation.lon, stopLocation.lat] },
-//       properties: {
-//         stopId: nextStop.stopId,
-//         routeId: nextStop.routeId,
-//         color: mtaStore.getRouteColor(nextStop.routeId),
-//         priority: priority++,
-//       },
-//     })
-//   }
-//   map.addSource('next-stops', {
-//     type: 'geojson',
-//     data: {
-//       type: 'FeatureCollection',
-//       features,
-//     },
-//   })
-//   map.addLayer({
-//     id: 'next-stops-circles',
-//     type: 'circle',
-//     source: 'next-stops',
-//     minzoom: 11,
-//     layout: {
-//       'circle-sort-key': ['get', 'priority'],
-//     },
-//     paint: {
-//       'circle-radius': 8,
-//       'circle-color': ['get', 'color'],
-//       'circle-stroke-width': 1.5,
-//       'circle-stroke-color': '#000000',
-//     },
-//   })
-
-//   map.addLayer({
-//     id: 'next-stops-labels',
-//     type: 'symbol',
-//     source: 'next-stops',
-//     minzoom: 11,
-//     layout: {
-//       'text-field': ['get', 'routeId'],
-//       'text-font': ['Open Sans Bold'],
-//       'text-size': 12,
-//       'text-allow-overlap': false,
-//       'symbol-sort-key': ['get', 'priority'],
-//     },
-//     paint: {
-//       'text-color': '#ffffff',
-//     },
-//   })
-// }
-
 const initTrainTrackingLayers = (map: maplibregl.Map) => {
   map.addSource('train-locations', {
     type: 'geojson',
@@ -347,7 +277,8 @@ const initTrainTrackingLayers = (map: maplibregl.Map) => {
     source: 'train-locations',
     minzoom: 10,
     layout: {
-      'circle-sort-key': ['get', 'priority'],
+      // High value renders last (on top)
+      'circle-sort-key': ['get', 'circle_priority'],
     },
     paint: {
       'circle-radius': 11,
@@ -366,8 +297,11 @@ const initTrainTrackingLayers = (map: maplibregl.Map) => {
       'text-field': ['get', 'routeId'],
       'text-font': ['Open Sans Bold'],
       'text-size': 11,
-      'text-allow-overlap': true,
-      'symbol-sort-key': ['get', 'priority'],
+      'text-allow-overlap': false,
+      'text-ignore-placement': false,
+      'text-padding': 2,
+      // Low value processes first (wins the text space)
+      'symbol-sort-key': ['get', 'label_priority'],
     },
     paint: {
       'text-color': '#ffffff',
@@ -379,24 +313,33 @@ const updateTrainLocationsOnMap = (map: maplibregl.Map, trainLocations: TrainLoc
   const source = map.getSource('train-locations') as maplibregl.GeoJSONSource
   if (!source) return
 
-  let priority = 1
+  const total = trainLocations.length
 
-  const features = trainLocations.map((train) => ({
-    type: 'Feature' as const,
-    id: `${train.tripId}_${train.nextStopId}`,
-    geometry: {
-      type: 'Point' as const,
-      coordinates: [train.lon, train.lat] as [number, number], // GeoJSON expects [Lon, Lat] ordering
-    },
-    properties: {
-      tripId: train.tripId,
-      routeId: train.routeId,
-      nextStopId: train.nextStopId,
-      bearing: train.bearing,
-      color: mtaStore.getRouteColor(train.routeId),
-      priority: priority++,
-    },
-  }))
+  const features = trainLocations.map((train, index) => {
+    // Top train (end of array) gets high circle priority to render on top
+    const circlePriority = index + 1
+
+    // Top train (end of array) gets low label priority (1) to win the text slot
+    const labelPriority = total - index
+
+    return {
+      type: 'Feature' as const,
+      id: `${train.tripId}_${train.nextStopId}`,
+      geometry: {
+        type: 'Point' as const,
+        coordinates: [train.lon, train.lat] as [number, number],
+      },
+      properties: {
+        tripId: train.tripId,
+        routeId: train.routeId,
+        nextStopId: train.nextStopId,
+        bearing: train.bearing,
+        color: mtaStore.getRouteColor(train.routeId),
+        circle_priority: circlePriority,
+        label_priority: labelPriority,
+      },
+    }
+  })
 
   source.setData({
     type: 'FeatureCollection',
