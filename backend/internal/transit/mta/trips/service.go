@@ -123,33 +123,32 @@ func (s *TripService) GetTripPositions(ctx context.Context) ([]TripTrainLocation
 	trainLocations := make([]TripTrainLocationAPI, 0, len(trainContexts))
 	skippedCoordsCount := 0
 
+	currentCoordsMap, prevCoordsMap, err := s.tripRepo.GetPositionsWithHistory(ctx, trainContexts)
+	if err != nil {
+		return nil, err
+	}
+
 	for _, train := range trainContexts {
 		mapKey := TripStopKey{
 			ShortTripID: train.ShortTripID,
 			StopID:      train.NextStopID,
 		}
 
-		currentCoords, hasCurrent := tripStopTrainCoordinates[mapKey]
+		currentCoords, hasCurrent := currentCoordsMap[mapKey]
 		if !hasCurrent {
 			skippedCoordsCount++
 			continue
 		}
-
-		prevSeqNum := train.CurrentShapeSequence - 1
-		if prevSeqNum < 1 {
-			prevSeqNum = 1
-		}
-
-		prevKey := TripStopKey{
-			ShortTripID: train.ShortTripID,
-			StopID:      train.NextStopID,
-		}
-
-		prevCoords, hasPrev := tripStopTrainCoordinates[prevKey]
-
+		prevCoords, hasPrev := prevCoordsMap[mapKey]
 		bearing := 0.0
 
-		if hasPrev && (currentCoords.Lat != prevCoords.Lat || currentCoords.Lon != prevCoords.Lon) {
+		if train.CurrentShapeSequence <= 1 {
+			if strings.HasSuffix(train.NextStopID, "S") || strings.Contains(train.ShortTripID, "..S") {
+				bearing = 180.0
+			} else {
+				bearing = 0.0
+			}
+		} else if hasPrev && (currentCoords.Lat != prevCoords.Lat || currentCoords.Lon != prevCoords.Lon) {
 			deltaLat := currentCoords.Lat - prevCoords.Lat
 			deltaLon := currentCoords.Lon - prevCoords.Lon
 

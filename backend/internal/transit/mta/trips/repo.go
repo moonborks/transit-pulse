@@ -528,3 +528,89 @@ func (r *TripRepo) GetCoordinatesByShapeSequence(ctx context.Context, contexts [
 
 	return resultMap, rows.Err()
 }
+
+func (r *TripRepo) GetPositionsWithHistory(ctx context.Context, contexts []TrainContext) (map[TripStopKey]TrainCoordinates, map[TripStopKey]TrainCoordinates, error) {
+	currentMap := make(map[TripStopKey]TrainCoordinates, len(contexts))
+	prevMap := make(map[TripStopKey]TrainCoordinates, len(contexts))
+	if len(contexts) == 0 {
+		return currentMap, prevMap, nil
+	}
+
+	batchSize := len(contexts) * 2
+	shortTripIDs := make([]string, 0, batchSize)
+	nextStopIDs := make([]string, 0, batchSize)
+	shapeIDs := make([]string, 0, batchSize)
+	sequences := make([]int32, 0, batchSize)
+	isPrevMarker := make([]bool, 0, batchSize)
+
+	for _, c := range contexts {
+		parts := strings.Split(c.ShortTripID, "_")
+		shapeID := ""
+		if len(parts) > 1 {
+			shapeID = parts[1]
+		}
+
+		prevSeq := int32(c.CurrentShapeSequence - 1)
+		if prevSeq < 1 {
+			prevSeq = 1
+		}
+
+		shortTripIDs = append(shortTripIDs, c.ShortTripID)
+		nextStopIDs = append(nextStopIDs, c.NextStopID)
+		shapeIDs = append(shapeIDs, shapeID)
+		sequences = append(sequences, int32(c.CurrentShapeSequence))
+		isPrevMarker = append(isPrevMarker, false)
+
+		shortTripIDs = append(shortTripIDs, c.ShortTripID)
+		nextStopIDs = append(nextStopIDs, c.NextStopID)
+		shapeIDs = append(shapeIDs, shapeID)
+		sequences = append(sequences, prevSeq)
+		isPrevMarker = append(isPrevMarker, true)
+	}
+
+	query := `
+		SELECT DISTINCT ON (k.short_trip_id, k.next_stop_id, k.is_prev)
+			k.short_trip_id,
+			k.next_stop_id,
+			k.is_prev,
+			s.lat,
+			s.lon
+		FROM 
+			UNNEST($1::text[], $2::text[], $3::text[], $4::int[], $5::boolean[]) 
+		AS 
+			k(short_trip_id, next_stop_id, shape_id, sequence, is_prev)
+		JOIN 
+			shapes s ON s.id LIKE k.shape_id || '%' AND s.sequence = k.sequence
+		ORDER BY 
+			k.short_trip_id, k.next_stop_id, k.is_prev;
+	`
+
+	rows, err := r.db.Query(ctx, query, shortTripIDs, nextStopIDs, shapeIDs, sequences, isPrevMarker)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var shortTripID, nextStopID string
+		var isPrev bool
+		var coords TrainCoordinates
+
+		if err := rows.Scan(&shortTripID, &nextStopID, &isPrev, &coords.Lat, &coords.Lon); err != nil {
+			return nil, nil, err
+		}
+
+		mapKey := TripStopKey{
+			ShortTripID: shortTripID,
+			StopID:      nextStopID,
+		}
+
+		if isPrev {
+			prevMap[mapKey] = coords
+		} else {
+			currentMap[mapKey] = coords
+		}
+	}
+
+	return currentMap, prevMap, rows.Err()
+}

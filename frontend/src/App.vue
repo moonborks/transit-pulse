@@ -265,6 +265,35 @@ const addStops = (map: maplibregl.Map) => {
   })
 }
 
+function addArrowIcon(map: maplibregl.Map) {
+  const size = 20
+  const canvas = document.createElement('canvas')
+  canvas.width = size
+  canvas.height = size
+  const ctx = canvas.getContext('2d')!
+
+  // Wider arrowhead: tip near top, base spans almost full width,
+  // and the base sits higher up (shorter height) so it reads as "wide" not "tall"
+  ctx.beginPath()
+  ctx.moveTo(size / 2, size * 0.1) // tip (near top)
+  ctx.lineTo(size * 0.95, size * 0.85) // bottom-right corner, pulled out wide
+  ctx.lineTo(size / 2, size * 0.6) // notch (inward point for arrowhead look)
+  ctx.lineTo(size * 0.05, size * 0.85) // bottom-left corner, pulled out wide
+  ctx.closePath()
+  ctx.fillStyle = '#ffffff'
+  ctx.fill()
+
+  map.addImage(
+    'train-arrow',
+    {
+      width: size,
+      height: size,
+      data: ctx.getImageData(0, 0, size, size).data,
+    },
+    { sdf: true },
+  )
+}
+
 const initTrainTrackingLayers = (map: maplibregl.Map) => {
   map.addSource('train-locations', {
     type: 'geojson',
@@ -284,7 +313,33 @@ const initTrainTrackingLayers = (map: maplibregl.Map) => {
       'circle-radius': 11,
       'circle-color': ['get', 'color'],
       'circle-stroke-width': 2,
-      'circle-stroke-color': '#ffffff',
+      'circle-stroke-color': '#000000',
+    },
+  })
+
+  addArrowIcon(map)
+
+  const CIRCLE_RADIUS = 11
+  const ARROW_HALF_HEIGHT = 8
+  const GAP = 8
+
+  map.addLayer({
+    id: 'train-arrows',
+    type: 'symbol',
+    source: 'train-locations',
+    minzoom: 13,
+    layout: {
+      'icon-image': 'train-arrow',
+      'icon-size': 1,
+      'icon-rotate': ['get', 'bearing'],
+      'icon-rotation-alignment': 'map',
+      'icon-allow-overlap': true,
+      'icon-ignore-placement': true,
+      'icon-offset': [0, -(CIRCLE_RADIUS + GAP - ARROW_HALF_HEIGHT)],
+      'symbol-sort-key': ['get', 'circle_priority'],
+    },
+    paint: {
+      'icon-color': ['get', 'color'],
     },
   })
 
