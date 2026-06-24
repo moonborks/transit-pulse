@@ -18,8 +18,16 @@ type TripService struct {
 	shapeRepo    *shapes.ShapeRepo
 }
 
-func NewTripService(tr *TripRepo, nsr *nextstops.NextStopRepo, sr *shapes.ShapeRepo) *TripService {
-	return &TripService{tripRepo: tr, nextStopRepo: nsr, shapeRepo: sr}
+func NewTripService(
+	tr *TripRepo,
+	nsr *nextstops.NextStopRepo,
+	sr *shapes.ShapeRepo,
+) *TripService {
+	return &TripService{
+		tripRepo:     tr,
+		nextStopRepo: nsr,
+		shapeRepo:    sr,
+	}
 }
 
 func (s *TripService) GetAll(ctx context.Context) ([]Trip, error) {
@@ -77,7 +85,6 @@ func (s *TripService) GetTripPositions(ctx context.Context) ([]TripTrainLocation
 	tripSequenceKeys := make([]TripSequenceKey, 0, numOfTrains)
 
 	for tripStopKey, sequence := range tripStopKeySequenceMap {
-
 		calculatedSeq := sequence - 1
 		if calculatedSeq > 0 {
 			tripSequenceKey := TripSequenceKey{
@@ -87,19 +94,37 @@ func (s *TripService) GetTripPositions(ctx context.Context) ([]TripTrainLocation
 			tripSequenceKeys = append(tripSequenceKeys, tripSequenceKey)
 		}
 	}
+	slog.Debug(
+		"Fetching previous stop details from repository",
+		"sequence_keys_count",
+		len(tripSequenceKeys),
+	)
 	tripStopKeyToPrevStopInfoMap := make(map[TripStopKey]PrevStopInfo, len(tripSequenceKeys))
 	tripStopKeyToPrevStopInfoMap, err = s.tripRepo.GetPrevStopInfo(ctx, tripSequenceKeys)
 	if err != nil {
 		slog.Error("Failed to get previous stop details", "err", err)
 		return []TripTrainLocationAPI{}, err
 	}
-	slog.Debug("Successfully retrieved previous stop details", "mapped_count", len(tripStopKeyToPrevStopInfoMap))
+	slog.Debug(
+		"Successfully retrieved previous stop details",
+		"mapped_count",
+		len(tripStopKeyToPrevStopInfoMap),
+	)
 
 	slog.Debug("Assembling initial in-memory train contexts")
-	trainContexts := buildTrainContexts(nextStops, tripStopKeySequenceMap, tripStopKeyToPrevStopInfoMap, time.Now())
+	trainContexts := buildTrainContexts(
+		nextStops,
+		tripStopKeySequenceMap,
+		tripStopKeyToPrevStopInfoMap,
+		time.Now(),
+	)
 	slog.Info("Train contexts compiled", "active_contexts_count", len(trainContexts))
 
-	slog.Debug("Fetching shape sequences bounding ranges from repository", "contexts_count", len(trainContexts))
+	slog.Debug(
+		"Fetching shape sequences bounding ranges from repository",
+		"contexts_count",
+		len(trainContexts),
+	)
 	shapeSequences, err := s.tripRepo.GetShapeSequences(ctx, trainContexts)
 	if err != nil {
 		slog.Error("Failed to get shape sequences", "err", err)
@@ -117,7 +142,11 @@ func (s *TripService) GetTripPositions(ctx context.Context) ([]TripTrainLocation
 		slog.Error("Failed to look up shape path coordinates", "err", err)
 		return []TripTrainLocationAPI{}, err
 	}
-	slog.Debug("Successfully retrieved exact physical track coordinates", "mapped_count", len(tripStopTrainCoordinates))
+	slog.Debug(
+		"Successfully retrieved exact physical track coordinates",
+		"mapped_count",
+		len(tripStopTrainCoordinates),
+	)
 
 	slog.Debug("Building final API payload and calculating travel bearings")
 	trainLocations := make([]TripTrainLocationAPI, 0, len(trainContexts))
@@ -143,7 +172,8 @@ func (s *TripService) GetTripPositions(ctx context.Context) ([]TripTrainLocation
 		bearing := 0.0
 
 		if train.CurrentShapeSequence <= 1 {
-			if strings.HasSuffix(train.NextStopID, "S") || strings.Contains(train.ShortTripID, "..S") {
+			if strings.HasSuffix(train.NextStopID, "S") ||
+				strings.Contains(train.ShortTripID, "..S") {
 				bearing = 180.0
 			} else {
 				bearing = 0.0
@@ -171,15 +201,25 @@ func (s *TripService) GetTripPositions(ctx context.Context) ([]TripTrainLocation
 	}
 
 	if skippedCoordsCount > 0 {
-		slog.Warn("Some trains were omitted due to missing track coordinate points", "omitted_count", skippedCoordsCount)
+		slog.Warn(
+			"Some trains were omitted due to missing track coordinate points",
+			"omitted_count",
+			skippedCoordsCount,
+		)
 	}
 
 	slog.Info("GetTripPositions execution complete", "final_payload_count", len(trainLocations))
 
+	msg := time.Now().String()
+	s.tripSSE.tripChannel <- msg
+
 	return trainLocations, nil
 }
 
-func parseScheduledDepartureTimeToTime(scheduledTimeStr string, realTimeBaseline time.Time) time.Time {
+func parseScheduledDepartureTimeToTime(
+	scheduledTimeStr string,
+	realTimeBaseline time.Time,
+) time.Time {
 	fallbackTime := realTimeBaseline.Add(-2 * time.Minute)
 	if scheduledTimeStr == "" {
 		return fallbackTime
@@ -211,7 +251,13 @@ func parseScheduledDepartureTimeToTime(scheduledTimeStr string, realTimeBaseline
 		0, 0, 0, 0, loc,
 	)
 
-	durationOffset := time.Duration(hours)*time.Hour + time.Duration(minutes)*time.Minute + time.Duration(seconds)*time.Second
+	durationOffset := time.Duration(
+		hours,
+	)*time.Hour + time.Duration(
+		minutes,
+	)*time.Minute + time.Duration(
+		seconds,
+	)*time.Second
 	return midnight.Add(durationOffset)
 }
 
@@ -227,7 +273,8 @@ func buildTrainContexts(
 			input7Count++
 		}
 	}
-	slog.Info("🔍 [buildTrainContexts] START",
+	slog.Info(
+		"🔍 [buildTrainContexts] START",
 		"total_next_stops_received", len(nextStops),
 		"7_trains_in_input", input7Count,
 	)
@@ -248,7 +295,8 @@ func buildTrainContexts(
 		nextSequence, hasSequence := tripStopKeySequenceMap[lookupKey]
 		if !hasSequence && is7Train {
 			dropped7NoSequence++
-			slog.Debug("❌ 7 Train missing from tripStopKeySequenceMap",
+			slog.Debug(
+				"❌ 7 Train missing from tripStopKeySequenceMap",
 				"short_trip_id", nextStop.ShortTripID,
 				"stop_id", nextStop.StopID,
 			)
@@ -266,14 +314,23 @@ func buildTrainContexts(
 
 		parsedArrivalTime, err := time.Parse(time.RFC3339, nextStop.ArrivalTime)
 		if err != nil {
-			slog.Error("failed to parse arrival time string", "err", err, "val", nextStop.ArrivalTime)
+			slog.Error(
+				"failed to parse arrival time string",
+				"err",
+				err,
+				"val",
+				nextStop.ArrivalTime,
+			)
 			if is7Train {
 				dropped7TimeParse++
 			}
 			continue
 		}
 
-		parsedDepartureTime := parseScheduledDepartureTimeToTime(prevInfo.PrevDepartureTime, parsedArrivalTime)
+		parsedDepartureTime := parseScheduledDepartureTimeToTime(
+			prevInfo.PrevDepartureTime,
+			parsedArrivalTime,
+		)
 		totalTime := parsedArrivalTime.Sub(parsedDepartureTime)
 		elapsedTime := now.Sub(parsedDepartureTime)
 
@@ -310,7 +367,8 @@ func buildTrainContexts(
 		}
 	}
 
-	slog.Info("🔍 [buildTrainContexts] END SUMMARY",
+	slog.Info(
+		"🔍 [buildTrainContexts] END SUMMARY",
 		"compiled_contexts_total", len(trainContexts),
 		"7_trains_compiled", final7Count,
 		"7_trains_dropped_no_sequence", dropped7NoSequence,

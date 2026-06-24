@@ -96,10 +96,13 @@ func NewApp() *App {
 	timeRepo := times.NewTimeRepo(db, rdb)
 	nextStopRepo := nextstops.NewNextStopRepo(rdb)
 
+	tripSSEChannel := make(chan string, 5)
+	tripSSE := trips.NewSSEChannel(tripSSEChannel)
+
 	routeService := routes.NewRouteService(routeRepo)
 	shapeService := shapes.NewShapeService(shapeRepo)
 	stopService := stops.NewStopService(stopRepo, nextStopRepo)
-	tripService := trips.NewTripService(tripRepo, nextStopRepo, shapeRepo)
+	tripService := trips.NewTripService(tripRepo, tripSSE, nextStopRepo, shapeRepo)
 	timeService := times.NewTimeService(timeRepo)
 
 	routeHandler := routes.NewRouteHandler(routeService, stopService)

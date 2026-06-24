@@ -23,6 +23,7 @@ func TripRoutes(h *TripHandler) http.Handler {
 	r.Get("/{id}", h.GetTrip)
 	r.Get("/today", h.GetTripsForToday)
 	r.Get("/positions", h.GetTripPositions)
+	r.Get("/messages", h.tripService.tripSSE.TripEvents)
 	return r
 }
 
