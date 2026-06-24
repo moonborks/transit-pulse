@@ -4,13 +4,22 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"regexp"
 	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
+
+var nycLoc *time.Location
+
+func init() {
+	var err error
+	nycLoc, err = time.LoadLocation("America/New_York")
+	if err != nil {
+		nycLoc = time.FixedZone("EDT", -4*60*60)
+	}
+}
 
 type TripRepo struct {
 	db *pgxpool.Pool
@@ -32,58 +41,22 @@ func getFreqDayFromWeekday(w time.Weekday) FreqDay {
 }
 
 func (r *TripRepo) getCurrentFreqDay() FreqDay {
-	loc, err := time.LoadLocation("America/New_York")
-	if err != nil {
-		slog.Error("loading location for trips in repository", "err", err)
-		return Weekday
-	}
-
-	nycTime := time.Now().In(loc)
-	weekday := nycTime.Weekday()
-
-	return getFreqDayFromWeekday(weekday)
+	return getFreqDayFromWeekday(time.Now().In(nycLoc).Weekday())
 }
 
 func (r *TripRepo) GetAll(ctx context.Context) ([]Trip, error) {
 	stmt := `
-		SELECT
-			id
-			, day_of_week
-			, short_trip_id
-			, route_id
-			, service_id
-			, headsign
-			, direction_id
-			, shape_id
-		FROM
-			trips
+		SELECT id, day_of_week, short_trip_id, route_id, service_id, headsign, direction_id, shape_id 
+		FROM trips
 	`
-
 	rows, err := r.db.Query(ctx, stmt)
 	if err != nil {
-		slog.Error("query trips table", "err", err)
-		return nil, err
+		return nil, fmt.Errorf("query trips table failed: %w", err)
 	}
-	defer rows.Close()
 
-	trips := []Trip{}
-
-	for rows.Next() {
-		var trip Trip
-		if err := rows.Scan(
-			&trip.ID,
-			&trip.DayOfWeek,
-			&trip.ShortTripID,
-			&trip.RouteID,
-			&trip.ServiceID,
-			&trip.Headsign,
-			&trip.DirectionID,
-			&trip.ShapeID,
-		); err != nil {
-			slog.Error("retrieving particular row", "err", err)
-			return []Trip{}, err
-		}
-		trips = append(trips, trip)
+	trips, err := pgx.CollectRows(rows, pgx.RowToStructByName[Trip])
+	if err != nil {
+		return nil, fmt.Errorf("failed to scan trips: %w", err)
 	}
 
 	return trips, nil
@@ -91,93 +64,39 @@ func (r *TripRepo) GetAll(ctx context.Context) ([]Trip, error) {
 
 func (r *TripRepo) GetTrip(ctx context.Context, id string) (Trip, error) {
 	stmt := `
-		SELECT
-			id
-			, day_of_week
-			, short_trip_id
-			, route_id
-			, service_id
-			, headsign
-			, direction_id
-			, shape_id
-		FROM
-			trips
-		WHERE
-			id = $1
+		SELECT id, day_of_week, short_trip_id, route_id, service_id, headsign, direction_id, shape_id 
+		FROM trips 
+		WHERE id = $1
 	`
-
-	var trip Trip
-
-	row := r.db.QueryRow(ctx, stmt, id)
-	err := row.Scan(
-		&trip.ID,
-		&trip.ShortTripID,
-		&trip.RouteID,
-		&trip.ServiceID,
-		&trip.Headsign,
-		&trip.DirectionID,
-		&trip.ShapeID,
-	)
+	rows, err := r.db.Query(ctx, stmt, id)
 	if err != nil {
-		slog.Error("retrieving row with specific id", "id", id, "err", err)
-		return Trip{}, err
+		return Trip{}, fmt.Errorf("query single trip failed (id=%s): %w", id, err)
+	}
+
+	trip, err := pgx.CollectOneRow(rows, pgx.RowToStructByName[Trip])
+	if err != nil {
+		return Trip{}, fmt.Errorf("failed to scan single trip (id=%s): %w", id, err)
 	}
 
 	return trip, nil
 }
 
 func (r *TripRepo) GetTripsForToday(ctx context.Context) ([]Trip, error) {
-	loc, err := time.LoadLocation("America/New_York")
-	if err != nil {
-		slog.Error("loading location for trips", "err", err)
-		return []Trip{}, err
-	}
-	nycTime := time.Now().In(loc)
-	weekday := nycTime.Weekday()
-	freqDay := getFreqDayFromWeekday(weekday)
+	freqDay := r.getCurrentFreqDay()
 
 	query := `
-		SELECT
-			id
-			, day_of_week
-			, short_trip_id
-			, route_id
-			, service_id
-			, headsign
-			, direction_id
-			, shape_id
-		FROM 
-			trips
-		WHERE 
-			day_of_week = $1
-		OR 
-			day_of_week = $2
+		SELECT id, day_of_week, short_trip_id, route_id, service_id, headsign, direction_id, shape_id
+		FROM trips
+		WHERE day_of_week = $1 OR day_of_week = $2
 	`
-	rows, err := r.db.Query(ctx, query, freqDay, Everyday)
+	rows, err := r.db.Query(ctx, query, string(freqDay), string(Everyday))
 	if err != nil {
-		slog.Error("get trips for today", "err", err)
-		return []Trip{}, err
+		return nil, fmt.Errorf("query trips for today failed: %w", err)
 	}
-	defer rows.Close()
 
-	trips := []Trip{}
-
-	for rows.Next() {
-		var trip Trip
-		if err := rows.Scan(
-			&trip.ID,
-			&trip.DayOfWeek,
-			&trip.ShortTripID,
-			&trip.RouteID,
-			&trip.ServiceID,
-			&trip.Headsign,
-			&trip.DirectionID,
-			&trip.ShapeID,
-		); err != nil {
-			slog.Error("retrieving particular row", "err", err)
-			return []Trip{}, err
-		}
-		trips = append(trips, trip)
+	trips, err := pgx.CollectRows(rows, pgx.RowToStructByName[Trip])
+	if err != nil {
+		return nil, fmt.Errorf("failed to scan trips for today: %w", err)
 	}
 
 	return trips, nil
@@ -316,6 +235,7 @@ func (r *TripRepo) GetPrevStopInfo(ctx context.Context, tripSequenceKeys []TripS
 		return resultMap, nil
 	}
 
+	// 1. Uses the pre-cached internal timezone logic safely
 	currentFreqDay := r.getCurrentFreqDay()
 
 	tripIDs := make([]string, len(tripSequenceKeys))
@@ -336,8 +256,7 @@ func (r *TripRepo) GetPrevStopInfo(ctx context.Context, tripSequenceKeys []TripS
 			UNNEST($1::text[], $2::int[]) AS ik(short_trip_id, stop_sequence)
 		JOIN 
 			times t 
-			ON  t.stop_id = t.stop_id
-			AND t.trip_suffix LIKE SPLIT_PART(ik.short_trip_id, '_', 2) || '%'
+			ON t.trip_suffix LIKE SPLIT_PART(ik.short_trip_id, '_', 2) || '%'
 			AND t.stop_sequence = ik.stop_sequence
 		WHERE 
 			(t.day_of_week = $3::freq_day OR t.day_of_week = 'everyday'::freq_day)
@@ -348,20 +267,17 @@ func (r *TripRepo) GetPrevStopInfo(ctx context.Context, tripSequenceKeys []TripS
 
 	rows, err := r.db.Query(ctx, query, tripIDs, sequences, string(currentFreqDay))
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("query previous stop info failed: %w", err)
 	}
+
 	defer rows.Close()
 
+	var shortTripID, stopID, departureTime string
+	var stopSequence int32
+
 	_, err = pgx.ForEachRow(rows,
-		[]any{new(string), new(string), new(string), new(int32)},
+		[]any{&shortTripID, &stopID, &departureTime, &stopSequence},
 		func() error {
-			var shortTripID, stopID, departureTime string
-			var stopSequence int32
-
-			if err := rows.Scan(&shortTripID, &stopID, &departureTime, &stopSequence); err != nil {
-				return err
-			}
-
 			key := TripStopKey{
 				ShortTripID: shortTripID,
 			}
@@ -375,7 +291,7 @@ func (r *TripRepo) GetPrevStopInfo(ctx context.Context, tripSequenceKeys []TripS
 		},
 	)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to scan previous stop info rows: %w", err)
 	}
 
 	return resultMap, nil
@@ -396,22 +312,7 @@ func (r *TripRepo) GetShapeSequences(ctx context.Context, contexts []TrainContex
 		shortTripIDs[i] = c.ShortTripID
 		nextStopIDs[i] = c.NextStopID
 		prevStopIDs[i] = c.PrevStopID
-
-		parts := strings.Split(c.ShortTripID, "_")
-		rawShapeID := ""
-		if len(parts) > 1 {
-			rawShapeID = parts[1]
-		}
-
-		switch {
-		case strings.HasPrefix(rawShapeID, "SI.N"):
-			shapeIDs[i] = "SI..N03R"
-		case strings.HasPrefix(rawShapeID, "SI.S"):
-			shapeIDs[i] = "SI..S03R"
-		default:
-			suffixRegex := regexp.MustCompile(`([NS]\d+)X.*`)
-			shapeIDs[i] = suffixRegex.ReplaceAllString(rawShapeID, "$1")
-		}
+		shapeIDs[i] = normalizeShapeID(c.ShortTripID)
 	}
 
 	query := `
@@ -450,29 +351,33 @@ func (r *TripRepo) GetShapeSequences(ctx context.Context, contexts []TrainContex
 
 	rows, err := r.db.Query(ctx, query, shortTripIDs, shapeIDs, prevStopIDs, nextStopIDs)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("querying shape sequences failed: %w", err)
 	}
 	defer rows.Close()
 
+	var shortTripID, nextStopID string
+	var prevSeq, nextSeq int64
 	rowCount := 0
-	for rows.Next() {
-		var shortTripID, nextStopID string
-		var prevSeq, nextSeq int64
 
-		if err := rows.Scan(&shortTripID, &nextStopID, &prevSeq, &nextSeq); err != nil {
-			return nil, err
-		}
-		rowCount++
+	_, err = pgx.ForEachRow(rows,
+		[]any{&shortTripID, &nextStopID, &prevSeq, &nextSeq},
+		func() error {
+			rowCount++
 
-		mapKey := TripStopKey{
-			ShortTripID: shortTripID,
-			StopID:      nextStopID,
-		}
+			mapKey := TripStopKey{
+				ShortTripID: shortTripID,
+				StopID:      nextStopID,
+			}
 
-		resultMap[mapKey] = ShapeRange{
-			PrevShapeSequence: prevSeq,
-			NextShapeSequence: nextSeq,
-		}
+			resultMap[mapKey] = ShapeRange{
+				PrevShapeSequence: prevSeq,
+				NextShapeSequence: nextSeq,
+			}
+			return nil
+		},
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed scanning shape sequence rows: %w", err)
 	}
 
 	slog.Debug("GetShapeSequences: query returned rows",
@@ -480,7 +385,7 @@ func (r *TripRepo) GetShapeSequences(ctx context.Context, contexts []TrainContex
 		"output_row_count", rowCount,
 	)
 
-	return resultMap, rows.Err()
+	return resultMap, nil
 }
 
 func (r *TripRepo) GetCoordinatesByShapeSequence(ctx context.Context, contexts []TrainContext) (map[TripStopKey]TrainCoordinates, error) {
@@ -499,21 +404,7 @@ func (r *TripRepo) GetCoordinatesByShapeSequence(ctx context.Context, contexts [
 		nextStopIDs[i] = c.NextStopID
 		sequences[i] = int32(c.CurrentShapeSequence)
 
-		parts := strings.Split(c.ShortTripID, "_")
-		rawShapeID := ""
-		if len(parts) > 1 {
-			rawShapeID = parts[1]
-		}
-
-		switch {
-		case strings.HasPrefix(rawShapeID, "SI.N"):
-			shapeIDs[i] = "SI..N03R"
-		case strings.HasPrefix(rawShapeID, "SI.S"):
-			shapeIDs[i] = "SI..S03R"
-		default:
-			suffixRegex := regexp.MustCompile(`([NS]\d+)X.*`)
-			shapeIDs[i] = suffixRegex.ReplaceAllString(rawShapeID, "$1")
-		}
+		shapeIDs[i] = normalizeShapeID(c.ShortTripID)
 	}
 
 	query := `
@@ -532,29 +423,33 @@ func (r *TripRepo) GetCoordinatesByShapeSequence(ctx context.Context, contexts [
 
 	rows, err := r.db.Query(ctx, query, shortTripIDs, nextStopIDs, shapeIDs, sequences)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("querying coordinates failed: %w", err)
 	}
 	defer rows.Close()
 
-	rowCount := 0
-	for rows.Next() {
-		var shortTripID, nextStopID string
-		var coords TrainCoordinates
+	var shortTripID, nextStopID string
+	var lat, lon float64
 
-		if err := rows.Scan(&shortTripID, &nextStopID, &coords.Lat, &coords.Lon); err != nil {
-			return nil, err
-		}
-		rowCount++
+	_, err = pgx.ForEachRow(rows,
+		[]any{&shortTripID, &nextStopID, &lat, &lon},
+		func() error {
+			mapKey := TripStopKey{
+				ShortTripID: shortTripID,
+				StopID:      nextStopID,
+			}
 
-		mapKey := TripStopKey{
-			ShortTripID: shortTripID,
-			StopID:      nextStopID,
-		}
-
-		resultMap[mapKey] = coords
+			resultMap[mapKey] = TrainCoordinates{
+				Lat: lat,
+				Lon: lon,
+			}
+			return nil
+		},
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed scanning coordinate rows: %w", err)
 	}
 
-	return resultMap, rows.Err()
+	return resultMap, nil
 }
 
 func (r *TripRepo) GetPositionsWithHistory(ctx context.Context, contexts []TrainContext) (map[TripStopKey]TrainCoordinates, map[TripStopKey]TrainCoordinates, error) {
@@ -572,22 +467,7 @@ func (r *TripRepo) GetPositionsWithHistory(ctx context.Context, contexts []Train
 	isPrevMarker := make([]bool, 0, batchSize)
 
 	for _, c := range contexts {
-		parts := strings.Split(c.ShortTripID, "_")
-		rawShapeID := ""
-		if len(parts) > 1 {
-			rawShapeID = parts[1]
-		}
-
-		var normalizedShapeID string
-		switch {
-		case strings.HasPrefix(rawShapeID, "SI.N"):
-			normalizedShapeID = "SI..N03R"
-		case strings.HasPrefix(rawShapeID, "SI.S"):
-			normalizedShapeID = "SI..S03R"
-		default:
-			suffixRegex := regexp.MustCompile(`([NS]\d+)X.*`)
-			normalizedShapeID = suffixRegex.ReplaceAllString(rawShapeID, "$1")
-		}
+		var normalizedShapeID string = normalizeShapeID(c.ShortTripID)
 
 		prevSeq := max(int32(c.CurrentShapeSequence-1), 1)
 
@@ -623,30 +503,38 @@ func (r *TripRepo) GetPositionsWithHistory(ctx context.Context, contexts []Train
 
 	rows, err := r.db.Query(ctx, query, shortTripIDs, nextStopIDs, shapeIDs, sequences, isPrevMarker)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, fmt.Errorf("querying positions with history failed: %w", err)
 	}
 	defer rows.Close()
 
-	for rows.Next() {
-		var shortTripID, nextStopID string
-		var isPrev bool
-		var coords TrainCoordinates
+	var shortTripID, nextStopID string
+	var isPrev bool
+	var lat, lon float64
 
-		if err := rows.Scan(&shortTripID, &nextStopID, &isPrev, &coords.Lat, &coords.Lon); err != nil {
-			return nil, nil, err
-		}
+	_, err = pgx.ForEachRow(rows,
+		[]any{&shortTripID, &nextStopID, &isPrev, &lat, &lon},
+		func() error {
+			mapKey := TripStopKey{
+				ShortTripID: shortTripID,
+				StopID:      nextStopID,
+			}
 
-		mapKey := TripStopKey{
-			ShortTripID: shortTripID,
-			StopID:      nextStopID,
-		}
+			coords := TrainCoordinates{
+				Lat: lat,
+				Lon: lon,
+			}
 
-		if isPrev {
-			prevMap[mapKey] = coords
-		} else {
-			currentMap[mapKey] = coords
-		}
+			if isPrev {
+				prevMap[mapKey] = coords
+			} else {
+				currentMap[mapKey] = coords
+			}
+			return nil
+		},
+	)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed scanning position history rows: %w", err)
 	}
 
-	return currentMap, prevMap, rows.Err()
+	return currentMap, prevMap, nil
 }
