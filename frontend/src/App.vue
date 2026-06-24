@@ -1,11 +1,15 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref, watch } from 'vue'
+import { nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import maplibregl from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import { useMtaStore } from './stores/mtaStore'
 import type { TrainLocation, Trip } from './types/mta'
 import { useTripSSE } from './composables/api/useSSE'
 import { endpoints } from './api/endpoints'
+import CircleTimer from './components/CircleTimer.vue'
+
+const timerRef = ref<InstanceType<typeof CircleTimer> | null>(null)
+const showTimer = ref(false)
 
 const mtaStore = useMtaStore()
 const mapEl = ref<HTMLDivElement | null>(null)
@@ -16,7 +20,14 @@ watch(tripEvent, async () => {
   console.log('update train location triggered via golang SSE event')
   await mtaStore.fetchTrainLocations(endpoints.mta.trips.getLocations)
   updateTrainLocationsOnMap(map!, mtaStore.trainLocations ?? [])
+  await startTimer()
 })
+
+async function startTimer() {
+  showTimer.value = true
+  await nextTick()
+  timerRef.value?.start()
+}
 
 const initMap = (el: HTMLDivElement): maplibregl.Map => {
   return new maplibregl.Map({
@@ -432,12 +443,16 @@ onUnmounted(() => {
 
 <template>
   <div class="page">
+    <div class="overlay">
+      <CircleTimer v-if="showTimer" ref="timerRef" />
+    </div>
     <div ref="mapEl" class="map-container" />
   </div>
 </template>
 
 <style scoped>
 .page {
+  position: relative;
   height: 100%;
   width: 100%;
 }
@@ -447,5 +462,12 @@ onUnmounted(() => {
   position: fixed;
   top: 0;
   left: 0;
+}
+
+.overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  pointer-events: none;
 }
 </style>
