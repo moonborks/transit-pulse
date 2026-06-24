@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"regexp"
 	"strings"
 	"time"
 
@@ -397,10 +398,18 @@ func (r *TripRepo) GetShapeSequences(ctx context.Context, contexts []TrainContex
 		prevStopIDs[i] = c.PrevStopID
 
 		parts := strings.Split(c.ShortTripID, "_")
+		rawShapeID := ""
 		if len(parts) > 1 {
-			shapeIDs[i] = parts[1]
-		} else {
-			shapeIDs[i] = ""
+			rawShapeID = parts[1]
+		}
+
+		switch {
+		case strings.HasPrefix(rawShapeID, "SI.N"):
+			shapeIDs[i] = "SI..N03R"
+		case strings.HasPrefix(rawShapeID, "SI.S"):
+			shapeIDs[i] = "SI..S03R"
+		default:
+			shapeIDs[i] = rawShapeID
 		}
 	}
 
@@ -444,6 +453,7 @@ func (r *TripRepo) GetShapeSequences(ctx context.Context, contexts []TrainContex
 	}
 	defer rows.Close()
 
+	rowCount := 0
 	for rows.Next() {
 		var shortTripID, nextStopID string
 		var prevSeq, nextSeq int64
@@ -451,6 +461,7 @@ func (r *TripRepo) GetShapeSequences(ctx context.Context, contexts []TrainContex
 		if err := rows.Scan(&shortTripID, &nextStopID, &prevSeq, &nextSeq); err != nil {
 			return nil, err
 		}
+		rowCount++
 
 		mapKey := TripStopKey{
 			ShortTripID: shortTripID,
@@ -462,6 +473,11 @@ func (r *TripRepo) GetShapeSequences(ctx context.Context, contexts []TrainContex
 			NextShapeSequence: nextSeq,
 		}
 	}
+
+	slog.Debug("GetShapeSequences: query returned rows",
+		"input_count", len(contexts),
+		"output_row_count", rowCount,
+	)
 
 	return resultMap, rows.Err()
 }
@@ -483,10 +499,18 @@ func (r *TripRepo) GetCoordinatesByShapeSequence(ctx context.Context, contexts [
 		sequences[i] = int32(c.CurrentShapeSequence)
 
 		parts := strings.Split(c.ShortTripID, "_")
+		rawShapeID := ""
 		if len(parts) > 1 {
-			shapeIDs[i] = parts[1]
-		} else {
-			shapeIDs[i] = ""
+			rawShapeID = parts[1]
+		}
+
+		switch {
+		case strings.HasPrefix(rawShapeID, "SI.N"):
+			shapeIDs[i] = "SI..N03R"
+		case strings.HasPrefix(rawShapeID, "SI.S"):
+			shapeIDs[i] = "SI..S03R"
+		default:
+			shapeIDs[i] = rawShapeID
 		}
 	}
 
@@ -510,6 +534,7 @@ func (r *TripRepo) GetCoordinatesByShapeSequence(ctx context.Context, contexts [
 	}
 	defer rows.Close()
 
+	rowCount := 0
 	for rows.Next() {
 		var shortTripID, nextStopID string
 		var coords TrainCoordinates
@@ -517,6 +542,7 @@ func (r *TripRepo) GetCoordinatesByShapeSequence(ctx context.Context, contexts [
 		if err := rows.Scan(&shortTripID, &nextStopID, &coords.Lat, &coords.Lon); err != nil {
 			return nil, err
 		}
+		rowCount++
 
 		mapKey := TripStopKey{
 			ShortTripID: shortTripID,
@@ -545,9 +571,20 @@ func (r *TripRepo) GetPositionsWithHistory(ctx context.Context, contexts []Train
 
 	for _, c := range contexts {
 		parts := strings.Split(c.ShortTripID, "_")
-		shapeID := ""
+		rawShapeID := ""
 		if len(parts) > 1 {
-			shapeID = parts[1]
+			rawShapeID = parts[1]
+		}
+
+		var normalizedShapeID string
+		switch {
+		case strings.HasPrefix(rawShapeID, "SI.N"):
+			normalizedShapeID = "SI..N03R"
+		case strings.HasPrefix(rawShapeID, "SI.S"):
+			normalizedShapeID = "SI..S03R"
+		default:
+			suffixRegex := regexp.MustCompile(`([NS]\d+)X.*`)
+			normalizedShapeID = suffixRegex.ReplaceAllString(rawShapeID, "$1")
 		}
 
 		prevSeq := int32(c.CurrentShapeSequence - 1)
@@ -557,13 +594,13 @@ func (r *TripRepo) GetPositionsWithHistory(ctx context.Context, contexts []Train
 
 		shortTripIDs = append(shortTripIDs, c.ShortTripID)
 		nextStopIDs = append(nextStopIDs, c.NextStopID)
-		shapeIDs = append(shapeIDs, shapeID)
+		shapeIDs = append(shapeIDs, normalizedShapeID)
 		sequences = append(sequences, int32(c.CurrentShapeSequence))
 		isPrevMarker = append(isPrevMarker, false)
 
 		shortTripIDs = append(shortTripIDs, c.ShortTripID)
 		nextStopIDs = append(nextStopIDs, c.NextStopID)
-		shapeIDs = append(shapeIDs, shapeID)
+		shapeIDs = append(shapeIDs, normalizedShapeID)
 		sequences = append(sequences, prevSeq)
 		isPrevMarker = append(isPrevMarker, true)
 	}

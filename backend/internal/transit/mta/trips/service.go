@@ -84,7 +84,20 @@ func (s *TripService) GetTripPositions(ctx context.Context) ([]TripTrainLocation
 
 	tripSequenceKeys := make([]TripSequenceKey, 0, numOfTrains)
 
+	slog.Debug("checking tripStopKeySequenceMap initialization",
+		"total_keys", len(tripStopKeySequenceMap),
+	)
+
 	for tripStopKey, sequence := range tripStopKeySequenceMap {
+		// 2. Log every single individual key containing "SI." to verify it exists in the map
+		if strings.Contains(tripStopKey.ShortTripID, "SI.") {
+			slog.Debug("processing SI route key",
+				"short_trip_id", tripStopKey.ShortTripID,
+				"stop_id", tripStopKey.StopID,
+				"original_sequence", sequence,
+			)
+		}
+
 		calculatedSeq := sequence - 1
 		if calculatedSeq > 0 {
 			tripSequenceKey := TripSequenceKey{
@@ -92,12 +105,22 @@ func (s *TripService) GetTripPositions(ctx context.Context) ([]TripTrainLocation
 				Sequence:    calculatedSeq,
 			}
 			tripSequenceKeys = append(tripSequenceKeys, tripSequenceKey)
+		} else {
+			// 3. Log if an SI route key was found but dropped due to sequence bounds
+			if strings.Contains(tripStopKey.ShortTripID, "SI.") {
+				slog.Warn("⚠️ SI route key dropped: calculated sequence <= 0",
+					"short_trip_id", tripStopKey.ShortTripID,
+					"original_sequence", sequence,
+					"calculated_sequence", calculatedSeq,
+				)
+			}
 		}
 	}
-	slog.Debug(
-		"Fetching previous stop details from repository",
-		"sequence_keys_count",
-		len(tripSequenceKeys),
+
+	// 4. Log the final output size going to the database repository
+	slog.Debug("finished building tripSequenceKeys",
+		"input_map_size", len(tripStopKeySequenceMap),
+		"output_slice_size", len(tripSequenceKeys),
 	)
 	tripStopKeyToPrevStopInfoMap := make(map[TripStopKey]PrevStopInfo, len(tripSequenceKeys))
 	tripStopKeyToPrevStopInfoMap, err = s.tripRepo.GetPrevStopInfo(ctx, tripSequenceKeys)
@@ -166,6 +189,11 @@ func (s *TripService) GetTripPositions(ctx context.Context) ([]TripTrainLocation
 		currentCoords, hasCurrent := currentCoordsMap[mapKey]
 		if !hasCurrent {
 			skippedCoordsCount++
+			// DEBUG: Log the exact trip and stop causing the omission
+			slog.Debug("Skipping train: missing track coordinates",
+				"short_trip_id", train.ShortTripID,
+				"next_stop_id", train.NextStopID,
+			)
 			continue
 		}
 		prevCoords, hasPrev := prevCoordsMap[mapKey]
@@ -264,36 +292,37 @@ func buildTrainContexts(
 	tripStopKeyToPrevStopInfoMap map[TripStopKey]PrevStopInfo,
 	now time.Time,
 ) []TrainContext {
-	var input7Count int
+	const debugRouteID = "SI"
+
+	var debugRouteInputCount int
 	for _, ns := range nextStops {
-		if strings.HasPrefix(ns.RouteID, "7") {
-			input7Count++
+		if ns.RouteID == debugRouteID {
+			debugRouteInputCount++
 		}
 	}
 	slog.Info(
 		"🔍 [buildTrainContexts] START",
 		"total_next_stops_received", len(nextStops),
-		"7_trains_in_input", input7Count,
+		"debug_route", debugRouteID,
+		"debug_route_in_input", debugRouteInputCount,
 	)
 
 	trainContexts := make([]TrainContext, 0, len(nextStops))
 
-	var dropped7NoSequence int
-	var dropped7NoPrevInfo int
-	var dropped7TimeParse int
+	var droppedNoPrevInfo int
+	var droppedTimeParse int
 
 	for _, nextStop := range nextStops {
-		is7Train := strings.HasPrefix(nextStop.RouteID, "7")
+		isDebugRoute := nextStop.RouteID == debugRouteID
 
 		lookupKey := TripStopKey{
 			ShortTripID: nextStop.ShortTripID,
 			StopID:      nextStop.StopID,
 		}
 		nextSequence, hasSequence := tripStopKeySequenceMap[lookupKey]
-		if !hasSequence && is7Train {
-			dropped7NoSequence++
-			slog.Debug(
-				"❌ 7 Train missing from tripStopKeySequenceMap",
+		if !hasSequence && isDebugRoute {
+			slog.Debug("❌ debug route missing from tripStopKeySequenceMap",
+				"route_id", nextStop.RouteID,
 				"short_trip_id", nextStop.ShortTripID,
 				"stop_id", nextStop.StopID,
 			)
@@ -306,20 +335,27 @@ func buildTrainContexts(
 
 		prevInfo, found := tripStopKeyToPrevStopInfoMap[prevLookupKey]
 		if !found {
+			if isDebugRoute {
+				droppedNoPrevInfo++
+				slog.Debug("❌ debug route dropped: no prevInfo",
+					"route_id", nextStop.RouteID,
+					"short_trip_id", nextStop.ShortTripID,
+					"stop_id", nextStop.StopID,
+				)
+			}
 			continue
 		}
 
 		parsedArrivalTime, err := time.Parse(time.RFC3339, nextStop.ArrivalTime)
 		if err != nil {
-			slog.Error(
-				"failed to parse arrival time string",
-				"err",
-				err,
-				"val",
-				nextStop.ArrivalTime,
-			)
-			if is7Train {
-				dropped7TimeParse++
+			slog.Error("failed to parse arrival time string", "err", err, "val", nextStop.ArrivalTime)
+			if isDebugRoute {
+				droppedTimeParse++
+				slog.Debug("❌ debug route dropped: time parse failure",
+					"route_id", nextStop.RouteID,
+					"short_trip_id", nextStop.ShortTripID,
+					"arrival_time_raw", nextStop.ArrivalTime,
+				)
 			}
 			continue
 		}
@@ -357,20 +393,20 @@ func buildTrainContexts(
 		trainContexts = append(trainContexts, ctxRecord)
 	}
 
-	var final7Count int
+	var debugRouteFinalCount int
 	for _, tc := range trainContexts {
-		if strings.HasPrefix(tc.RouteID, "7") {
-			final7Count++
+		if tc.RouteID == debugRouteID {
+			debugRouteFinalCount++
 		}
 	}
 
 	slog.Info(
 		"🔍 [buildTrainContexts] END SUMMARY",
 		"compiled_contexts_total", len(trainContexts),
-		"7_trains_compiled", final7Count,
-		"7_trains_dropped_no_sequence", dropped7NoSequence,
-		"7_trains_dropped_no_prev_info", dropped7NoPrevInfo,
-		"7_trains_dropped_time_parse_fail", dropped7TimeParse,
+		"debug_route", debugRouteID,
+		"debug_route_compiled", debugRouteFinalCount,
+		"debug_route_dropped_no_prev_info", droppedNoPrevInfo,
+		"debug_route_dropped_time_parse_fail", droppedTimeParse,
 	)
 
 	return trainContexts
