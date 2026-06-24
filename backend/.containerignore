@@ -1,0 +1,44 @@
+# Git
+.git
+.gitignore
+
+# IDEs and editors
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Build outputs
+bin/
+build/
+dist/
+out/
+tmp/
+
+# Coverage and test artifacts
+coverage.out
+*.coverprofile
+*.test
+
+# Logs
+*.log
+
+# Environment files
+.env
+.env.*
+
+# Vendor directory (exclude only if rebuilding dependencies in container)
+vendor/
+
+# Documentation (optional)
+README.md
+docs/
+
+# Local cache directories
+.cache/
+
+Containerfile
