@@ -57,6 +57,7 @@ func (s *TripService) GetTripPositions(ctx context.Context) ([]TripTrainLocation
 		return []TripTrainLocationAPI{}, err
 	}
 	numOfTrains := len(nextStops)
+
 	slog.Debug("Successfully fetched active next stops", "count", numOfTrains)
 
 	tripStopKeys := make([]TripStopKey, 0, 2*numOfTrains)
@@ -65,7 +66,6 @@ func (s *TripService) GetTripPositions(ctx context.Context) ([]TripTrainLocation
 		tripStopKeys = append(tripStopKeys, tripStopKey)
 	}
 
-	slog.Debug("Fetching stop sequences from repository", "keys_count", len(tripStopKeys))
 	tripStopKeySequenceMap := make(map[TripStopKey]int64, numOfTrains)
 	tripStopKeySequenceMap, err = s.tripRepo.GetStopSequences(ctx, tripStopKeys)
 	if err != nil {
@@ -75,14 +75,18 @@ func (s *TripService) GetTripPositions(ctx context.Context) ([]TripTrainLocation
 	slog.Debug("Successfully retrieved stop sequences", "mapped_count", len(tripStopKeySequenceMap))
 
 	tripSequenceKeys := make([]TripSequenceKey, 0, numOfTrains)
+
 	for tripStopKey, sequence := range tripStopKeySequenceMap {
-		if sequence-1 > 0 {
-			tripSequenceKey := TripSequenceKey{ShortTripID: tripStopKey.ShortTripID, Sequence: sequence - 1}
+
+		calculatedSeq := sequence - 1
+		if calculatedSeq > 0 {
+			tripSequenceKey := TripSequenceKey{
+				ShortTripID: tripStopKey.ShortTripID,
+				Sequence:    calculatedSeq,
+			}
 			tripSequenceKeys = append(tripSequenceKeys, tripSequenceKey)
 		}
 	}
-
-	slog.Debug("Fetching previous stop details from repository", "sequence_keys_count", len(tripSequenceKeys))
 	tripStopKeyToPrevStopInfoMap := make(map[TripStopKey]PrevStopInfo, len(tripSequenceKeys))
 	tripStopKeyToPrevStopInfoMap, err = s.tripRepo.GetPrevStopInfo(ctx, tripSequenceKeys)
 	if err != nil {
@@ -93,7 +97,7 @@ func (s *TripService) GetTripPositions(ctx context.Context) ([]TripTrainLocation
 
 	slog.Debug("Assembling initial in-memory train contexts")
 	trainContexts := buildTrainContexts(nextStops, tripStopKeySequenceMap, tripStopKeyToPrevStopInfoMap, time.Now())
-	slog.Info("Train contexts compiled", "active_contexts_count", len(trainContexts), "skipped_first_stations", numOfTrains-len(trainContexts))
+	slog.Info("Train contexts compiled", "active_contexts_count", len(trainContexts))
 
 	slog.Debug("Fetching shape sequences bounding ranges from repository", "contexts_count", len(trainContexts))
 	shapeSequences, err := s.tripRepo.GetShapeSequences(ctx, trainContexts)
@@ -218,14 +222,38 @@ func buildTrainContexts(
 	tripStopKeyToPrevStopInfoMap map[TripStopKey]PrevStopInfo,
 	now time.Time,
 ) []TrainContext {
+	var input7Count int
+	for _, ns := range nextStops {
+		if strings.HasPrefix(ns.RouteID, "7") {
+			input7Count++
+		}
+	}
+	slog.Info("🔍 [buildTrainContexts] START",
+		"total_next_stops_received", len(nextStops),
+		"7_trains_in_input", input7Count,
+	)
+
 	trainContexts := make([]TrainContext, 0, len(nextStops))
 
+	var dropped7NoSequence int
+	var dropped7NoPrevInfo int
+	var dropped7TimeParse int
+
 	for _, nextStop := range nextStops {
+		is7Train := strings.HasPrefix(nextStop.RouteID, "7")
+
 		lookupKey := TripStopKey{
 			ShortTripID: nextStop.ShortTripID,
 			StopID:      nextStop.StopID,
 		}
-		nextSequence := tripStopKeySequenceMap[lookupKey]
+		nextSequence, hasSequence := tripStopKeySequenceMap[lookupKey]
+		if !hasSequence && is7Train {
+			dropped7NoSequence++
+			slog.Debug("❌ 7 Train missing from tripStopKeySequenceMap",
+				"short_trip_id", nextStop.ShortTripID,
+				"stop_id", nextStop.StopID,
+			)
+		}
 
 		prevLookupKey := TripStopKey{
 			ShortTripID: nextStop.ShortTripID,
@@ -240,6 +268,9 @@ func buildTrainContexts(
 		parsedArrivalTime, err := time.Parse(time.RFC3339, nextStop.ArrivalTime)
 		if err != nil {
 			slog.Error("failed to parse arrival time string", "err", err, "val", nextStop.ArrivalTime)
+			if is7Train {
+				dropped7TimeParse++
+			}
 			continue
 		}
 
@@ -272,6 +303,21 @@ func buildTrainContexts(
 
 		trainContexts = append(trainContexts, ctxRecord)
 	}
+
+	var final7Count int
+	for _, tc := range trainContexts {
+		if strings.HasPrefix(tc.RouteID, "7") {
+			final7Count++
+		}
+	}
+
+	slog.Info("🔍 [buildTrainContexts] END SUMMARY",
+		"compiled_contexts_total", len(trainContexts),
+		"7_trains_compiled", final7Count,
+		"7_trains_dropped_no_sequence", dropped7NoSequence,
+		"7_trains_dropped_no_prev_info", dropped7NoPrevInfo,
+		"7_trains_dropped_time_parse_fail", dropped7TimeParse,
+	)
 
 	return trainContexts
 }

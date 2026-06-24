@@ -40,7 +40,7 @@ func RunRealTimeGTFSJob(ctx context.Context, rdb *redis.Client, mtaURL string) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			slog.Info("retrieving realtime gtfs retrieval job", "url", mtaURL)
+			// slog.Info("retrieving realtime gtfs retrieval job", "url", mtaURL)
 
 			gtfs.FetchRealtimeFeed(ctx, rdb, mtaURL)
 		}

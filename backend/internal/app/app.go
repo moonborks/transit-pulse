@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
@@ -57,7 +58,9 @@ func NewApp() *App {
 	if err != nil {
 		slog.Error("Parse database config:", "err", err)
 	}
-	config.MinConns = 5
+	config.MaxConnIdleTime = time.Minute * 3
+	config.MaxConns = 50
+	config.MinConns = 20
 
 	db, err := pgxpool.NewWithConfig(ctx, config)
 	if err != nil {

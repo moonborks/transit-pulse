@@ -72,8 +72,14 @@ func Migrate(ctx context.Context, conn *pgxpool.Pool) error {
 				arrival_time   TEXT,
 				departure_time TEXT,
 				stop_sequence  INT,
+				trip_suffix    TEXT NULL,
+				trip_base_prefix TEXT NULL,
 				PRIMARY KEY (trip_id, stop_id)
 			);
+
+			CREATE INDEX IF NOT EXISTS idx_times_tier1 ON times (short_trip_id, stop_id, day_of_week);
+			CREATE INDEX IF NOT EXISTS idx_times_tier2 ON times (trip_suffix, stop_id, day_of_week);
+			CREATE INDEX IF NOT EXISTS idx_times_tier3 ON times (trip_base_prefix, stop_id, day_of_week);
 		`},
 	}
 

@@ -2,6 +2,7 @@ package trips
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"strings"
 	"time"
@@ -185,57 +186,127 @@ func (r *TripRepo) GetStopSequences(ctx context.Context, tripStopKeys []TripStop
 	if len(tripStopKeys) == 0 {
 		return make(map[TripStopKey]int64), nil
 	}
-	currentFreqDay := r.getCurrentFreqDay()
-	var (
-		shortTripIDs []string
-		nextStopIDs  []string
-	)
-	for _, key := range tripStopKeys {
-		shortTripIDs = append(shortTripIDs, key.ShortTripID)
-		nextStopIDs = append(nextStopIDs, key.StopID)
-	}
 
-	query := `
-		SELECT 
-			t.short_trip_id,
-			t.stop_id,
-			t.stop_sequence 
-		FROM 
-			times t
-		JOIN 
-			UNNEST($1::text[], $2::text[]) AS k(short_trip_id, stop_id)
-			ON  t.short_trip_id = k.short_trip_id 
-			AND t.stop_id = k.stop_id
-		WHERE 
-			(t.day_of_week = $3::freq_day OR t.day_of_week = 'everyday'::freq_day);
-	`
-	rows, err := r.db.Query(ctx, query, shortTripIDs, nextStopIDs, string(currentFreqDay))
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
+	currentFreqDay := string(r.getCurrentFreqDay())
 	resultMap := make(map[TripStopKey]int64, len(tripStopKeys))
 
-	_, err = pgx.ForEachRow(rows,
-		[]any{new(string), new(string), new(int64)},
-		func() error {
-			var shortTripID, nextStopID string
-			var sequence int64
-
-			if err := rows.Scan(&shortTripID, &nextStopID, &sequence); err != nil {
-				return err
-			}
-			key := TripStopKey{ShortTripID: shortTripID, StopID: nextStopID}
-			resultMap[key] = sequence
-			return nil
-		},
-	)
-	if err != nil {
+	// --- PASS 1: Exact Match (Tier 1) ---
+	if err := r.queryTierBatch(ctx, "exact", tripStopKeys, currentFreqDay, resultMap); err != nil {
 		return nil, err
+	}
+
+	if len(resultMap) == len(tripStopKeys) {
+		return resultMap, nil
+	}
+
+	// --- PASS 2: Suffix Match (Tier 2) ---
+	missingKeys := getMissingKeysBatch(tripStopKeys, resultMap)
+	if err := r.queryTierBatch(ctx, "suffix", missingKeys, currentFreqDay, resultMap); err != nil {
+		return nil, err
+	}
+
+	if len(resultMap) == len(tripStopKeys) {
+		return resultMap, nil
+	}
+
+	// --- PASS 3: Base Prefix Match (Tier 3) ---
+	missingKeys = getMissingKeysBatch(tripStopKeys, resultMap)
+	if err := r.queryTierBatch(ctx, "prefix", missingKeys, currentFreqDay, resultMap); err != nil {
+		return nil, err
+	}
+
+	for _, key := range tripStopKeys {
+		if _, exists := resultMap[key]; !exists {
+			resultMap[key] = -1
+		}
 	}
 
 	return resultMap, nil
+}
+
+func (r *TripRepo) queryTierBatch(ctx context.Context, tierType string, keys []TripStopKey, day string, resultMap map[TripStopKey]int64) error {
+	if len(keys) == 0 {
+		return nil
+	}
+
+	shortTripIDs := make([]string, 0, len(keys))
+	nextStopIDs := make([]string, 0, len(keys))
+	extractedValues := make([]string, 0, len(keys))
+
+	for _, key := range keys {
+		shortTripIDs = append(shortTripIDs, key.ShortTripID)
+		nextStopIDs = append(nextStopIDs, key.StopID)
+
+		parts := strings.Split(key.ShortTripID, "_")
+		suffix := ""
+		if len(parts) > 1 {
+			suffix = parts[1]
+		}
+
+		switch tierType {
+		case "suffix":
+			extractedValues = append(extractedValues, suffix)
+		case "prefix":
+			prefix := suffix
+			if len(suffix) > 4 {
+				prefix = suffix[:4]
+			}
+			extractedValues = append(extractedValues, prefix)
+		}
+	}
+
+	var query string
+	var args []any
+
+	switch tierType {
+	case "exact":
+		query = `
+			SELECT ik.short_trip_id, ik.stop_id, t.stop_sequence
+			FROM UNNEST($1::text[], $2::text[]) AS ik(short_trip_id, stop_id)
+			JOIN times t ON t.stop_id = ik.stop_id AND t.short_trip_id = ik.short_trip_id
+			WHERE t.day_of_week IN ($3::freq_day, 'everyday'::freq_day);`
+		args = []any{shortTripIDs, nextStopIDs, day}
+	case "suffix":
+		query = `
+			SELECT DISTINCT ON (ik.short_trip_id, ik.stop_id) ik.short_trip_id, ik.stop_id, t.stop_sequence
+			FROM UNNEST($1::text[], $2::text[], $3::text[]) AS ik(short_trip_id, stop_id, suffix)
+			JOIN times t ON t.stop_id = ik.stop_id AND t.trip_suffix = ik.suffix
+			WHERE t.day_of_week IN ($4::freq_day, 'everyday'::freq_day);`
+		args = []any{shortTripIDs, nextStopIDs, extractedValues, day}
+	case "prefix":
+		query = `
+			SELECT DISTINCT ON (ik.short_trip_id, ik.stop_id) ik.short_trip_id, ik.stop_id, t.stop_sequence
+			FROM UNNEST($1::text[], $2::text[], $3::text[]) AS ik(short_trip_id, stop_id, prefix)
+			JOIN times t ON t.stop_id = ik.stop_id AND t.trip_base_prefix = ik.prefix
+			WHERE t.day_of_week IN ($4::freq_day, 'everyday'::freq_day);`
+		args = []any{shortTripIDs, nextStopIDs, extractedValues, day}
+	}
+
+	rows, err := r.db.Query(ctx, query, args...)
+	if err != nil {
+		return fmt.Errorf("batch query tier %s failed: %w", tierType, err)
+	}
+	defer rows.Close()
+
+	var sID, stopID string
+	var seq int64
+	for rows.Next() {
+		if err := rows.Scan(&sID, &stopID, &seq); err != nil {
+			return err
+		}
+		resultMap[TripStopKey{ShortTripID: sID, StopID: stopID}] = seq
+	}
+	return rows.Err()
+}
+
+func getMissingKeysBatch(original []TripStopKey, found map[TripStopKey]int64) []TripStopKey {
+	var missing []TripStopKey
+	for _, key := range original {
+		if _, exists := found[key]; !exists {
+			missing = append(missing, key)
+		}
+	}
+	return missing
 }
 
 func (r *TripRepo) GetPrevStopInfo(ctx context.Context, tripSequenceKeys []TripSequenceKey) (map[TripStopKey]PrevStopInfo, error) {
@@ -255,23 +326,23 @@ func (r *TripRepo) GetPrevStopInfo(ctx context.Context, tripSequenceKeys []TripS
 	}
 
 	query := `
-		SELECT 
-			t.short_trip_id, 
+		SELECT DISTINCT ON (ik.short_trip_id)
+			ik.short_trip_id,
 			t.stop_id, 
 			t.departure_time, 
 			t.stop_sequence
 		FROM 
-			times t
+			UNNEST($1::text[], $2::int[]) AS ik(short_trip_id, stop_sequence)
 		JOIN 
-			UNNEST($1::text[], $2::int[]) 
-			AS 
-				k(short_trip_id, stop_sequence)
-			ON  
-				t.short_trip_id = k.short_trip_id 
-			AND 
-				t.stop_sequence = k.stop_sequence
+			times t 
+			ON  t.stop_id = t.stop_id
+			AND t.trip_suffix LIKE SPLIT_PART(ik.short_trip_id, '_', 2) || '%'
+			AND t.stop_sequence = ik.stop_sequence
 		WHERE 
-			(t.day_of_week = $3::freq_day OR t.day_of_week = 'everyday'::freq_day);
+			(t.day_of_week = $3::freq_day OR t.day_of_week = 'everyday'::freq_day)
+		ORDER BY 
+			ik.short_trip_id, 
+			t.stop_sequence DESC;
 	`
 
 	rows, err := r.db.Query(ctx, query, tripIDs, sequences, string(currentFreqDay))
@@ -334,7 +405,7 @@ func (r *TripRepo) GetShapeSequences(ctx context.Context, contexts []TrainContex
 	}
 
 	query := `
-		SELECT 
+		SELECT DISTINCT ON (k.short_trip_id, k.next_stop_id)
 			k.short_trip_id,
 			k.next_stop_id,
 			p_shape.sequence AS prev_seq,
@@ -350,17 +421,21 @@ func (r *TripRepo) GetShapeSequences(ctx context.Context, contexts []TrainContex
 		JOIN 
 			shapes p_shape 
 			ON 
-				p_shape.id = k.shape_id 
+				p_shape.id LIKE k.shape_id || '%' 
 			AND 
 				p_shape.lat = p_stop.lat 
 			AND 
 				p_shape.lon = p_stop.lon
 		JOIN 
-			shapes n_shape ON n_shape.id = k.shape_id 
+			shapes n_shape 
+			ON 
+				n_shape.id LIKE k.shape_id || '%' 
 			AND 
 				n_shape.lat = n_stop.lat 
 			AND 
-				n_shape.lon = n_stop.lon;
+				n_shape.lon = n_stop.lon
+		ORDER BY 
+			k.short_trip_id, k.next_stop_id, p_shape.sequence ASC;
 	`
 
 	rows, err := r.db.Query(ctx, query, shortTripIDs, shapeIDs, prevStopIDs, nextStopIDs)
@@ -416,7 +491,7 @@ func (r *TripRepo) GetCoordinatesByShapeSequence(ctx context.Context, contexts [
 	}
 
 	query := `
-		SELECT 
+		SELECT DISTINCT ON (k.short_trip_id, k.next_stop_id)
 			k.short_trip_id,
 			k.next_stop_id,
 			s.lat,
@@ -424,7 +499,9 @@ func (r *TripRepo) GetCoordinatesByShapeSequence(ctx context.Context, contexts [
 		FROM 
 			UNNEST($1::text[], $2::text[], $3::text[], $4::int[]) AS k(short_trip_id, next_stop_id, shape_id, sequence)
 		JOIN 
-			shapes s ON s.id = k.shape_id AND s.sequence = k.sequence;
+			shapes s ON s.id LIKE k.shape_id || '%' AND s.sequence = k.sequence
+		ORDER BY 
+			k.short_trip_id, k.next_stop_id;
 	`
 
 	rows, err := r.db.Query(ctx, query, shortTripIDs, nextStopIDs, shapeIDs, sequences)
