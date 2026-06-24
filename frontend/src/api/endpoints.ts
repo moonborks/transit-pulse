@@ -11,6 +11,7 @@ export const endpoints = {
     },
     trips: {
       getAll: `${BASE_URL}/mta/trips`,
+      getMessages: `${BASE_URL}/mta/trips/messages`,
       getAllToday: `${BASE_URL}/mta/trips/today`,
       getLocations: `${BASE_URL}/mta/trips/positions`,
     },

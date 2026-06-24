@@ -1,13 +1,20 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref } from 'vue'
+import { onMounted, onUnmounted, ref, watch } from 'vue'
 import maplibregl from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import { useMtaStore } from './stores/mtaStore'
 import type { TrainLocation, Trip } from './types/mta'
+import { useTripSSE } from './composables/api/useSSE'
 
 const mtaStore = useMtaStore()
 const mapEl = ref<HTMLDivElement | null>(null)
 let map: maplibregl.Map | null = null
+
+const { tripEvent } = useTripSSE()
+watch(tripEvent, async () => {
+  console.log('update train location triggered via golang SSE event')
+  updateTrainLocationsOnMap(map!, mtaStore.trainLocations ?? [])
+})
 
 const initMap = (el: HTMLDivElement): maplibregl.Map => {
   return new maplibregl.Map({
