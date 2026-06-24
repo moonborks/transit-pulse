@@ -120,5 +120,6 @@ export const useMtaStore = defineStore('mta', () => {
     trainLocationsError,
     load,
     getRouteColor,
+    fetchTrainLocations,
   }
 })

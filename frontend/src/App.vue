@@ -5,6 +5,7 @@ import 'maplibre-gl/dist/maplibre-gl.css'
 import { useMtaStore } from './stores/mtaStore'
 import type { TrainLocation, Trip } from './types/mta'
 import { useTripSSE } from './composables/api/useSSE'
+import { endpoints } from './api/endpoints'
 
 const mtaStore = useMtaStore()
 const mapEl = ref<HTMLDivElement | null>(null)
@@ -13,6 +14,7 @@ let map: maplibregl.Map | null = null
 const { tripEvent } = useTripSSE()
 watch(tripEvent, async () => {
   console.log('update train location triggered via golang SSE event')
+  await mtaStore.fetchTrainLocations(endpoints.mta.trips.getLocations)
   updateTrainLocationsOnMap(map!, mtaStore.trainLocations ?? [])
 })
 
