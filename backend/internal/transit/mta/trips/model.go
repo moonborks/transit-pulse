@@ -1,14 +1,14 @@
 package trips
 
 type Trip struct {
-	ID          string  `json:"id"`
-	DayOfWeek   string  `json:"day_of_week"`
-	ShortTripID string  `json:"short_trip_id"`
-	RouteID     string  `json:"route_id"`
-	ServiceID   string  `json:"service_id"`
-	Headsign    string  `json:"headsign"`
-	DirectionID string  `json:"direction_id"`
-	ShapeID     *string `json:"shape_id"`
+	ID          string  `json:"id" db:"id"`
+	DayOfWeek   FreqDay `json:"day_of_week" db:"day_of_week"`
+	ShortTripID string  `json:"short_trip_id" db:"short_trip_id"`
+	RouteID     string  `json:"route_id" db:"route_id"`
+	ServiceID   string  `json:"service_id" db:"service_id"`
+	Headsign    string  `json:"headsign" db:"headsign"`
+	DirectionID int     `json:"direction_id" db:"direction_id"`
+	ShapeID     *string `json:"shape_id" db:"shape_id"`
 }
 
 type FreqDay string

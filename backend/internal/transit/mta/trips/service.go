@@ -89,15 +89,6 @@ func (s *TripService) GetTripPositions(ctx context.Context) ([]TripTrainLocation
 	)
 
 	for tripStopKey, sequence := range tripStopKeySequenceMap {
-		// 2. Log every single individual key containing "SI." to verify it exists in the map
-		if strings.Contains(tripStopKey.ShortTripID, "SI.") {
-			slog.Debug("processing SI route key",
-				"short_trip_id", tripStopKey.ShortTripID,
-				"stop_id", tripStopKey.StopID,
-				"original_sequence", sequence,
-			)
-		}
-
 		calculatedSeq := sequence - 1
 		if calculatedSeq > 0 {
 			tripSequenceKey := TripSequenceKey{
@@ -105,19 +96,9 @@ func (s *TripService) GetTripPositions(ctx context.Context) ([]TripTrainLocation
 				Sequence:    calculatedSeq,
 			}
 			tripSequenceKeys = append(tripSequenceKeys, tripSequenceKey)
-		} else {
-			// 3. Log if an SI route key was found but dropped due to sequence bounds
-			if strings.Contains(tripStopKey.ShortTripID, "SI.") {
-				slog.Warn("⚠️ SI route key dropped: calculated sequence <= 0",
-					"short_trip_id", tripStopKey.ShortTripID,
-					"original_sequence", sequence,
-					"calculated_sequence", calculatedSeq,
-				)
-			}
 		}
 	}
 
-	// 4. Log the final output size going to the database repository
 	slog.Debug("finished building tripSequenceKeys",
 		"input_map_size", len(tripStopKeySequenceMap),
 		"output_slice_size", len(tripSequenceKeys),
@@ -189,7 +170,6 @@ func (s *TripService) GetTripPositions(ctx context.Context) ([]TripTrainLocation
 		currentCoords, hasCurrent := currentCoordsMap[mapKey]
 		if !hasCurrent {
 			skippedCoordsCount++
-			// DEBUG: Log the exact trip and stop causing the omission
 			slog.Debug("Skipping train: missing track coordinates",
 				"short_trip_id", train.ShortTripID,
 				"next_stop_id", train.NextStopID,
@@ -300,27 +280,14 @@ func buildTrainContexts(
 			ShortTripID: nextStop.ShortTripID,
 			StopID:      nextStop.StopID,
 		}
-		nextSequence, hasSequence := tripStopKeySequenceMap[lookupKey]
-		if !hasSequence {
-			slog.Debug("❌ missing from tripStopKeySequenceMap",
-				"route_id", nextStop.RouteID,
-				"short_trip_id", nextStop.ShortTripID,
-				"stop_id", nextStop.StopID,
-			)
-		}
 
 		prevLookupKey := TripStopKey{
 			ShortTripID: nextStop.ShortTripID,
 			StopID:      "",
 		}
-
+		nextSequence, hasSequence := tripStopKeySequenceMap[lookupKey]
 		prevInfo, found := tripStopKeyToPrevStopInfoMap[prevLookupKey]
-		if !found {
-			slog.Debug("❌ no prevInfo",
-				"route_id", nextStop.RouteID,
-				"short_trip_id", nextStop.ShortTripID,
-				"stop_id", nextStop.StopID,
-			)
+		if !found || !hasSequence {
 			continue
 		}
 
