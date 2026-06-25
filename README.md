@@ -2,9 +2,9 @@
 
 A tracker for all the MTA public subway lines in NYC.
 
-<video controls width="800">
-    <source src="assets/demo.webm" type="video/webm">
-</video>
+<p align="center">
+    <img src="assets/demo.gif" width="800" alt="Demo">
+</p>
 
 ## Features
 
